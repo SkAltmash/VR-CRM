@@ -69,44 +69,83 @@ async function loadImageDataUrl(url) {
 }
 
 function drawHeader(doc, pageNumber, logoDataUrl, settings) {
-    if (logoDataUrl) {
-        doc.addImage(logoDataUrl, "PNG", MARGIN_X, 16, 42, 42);
+    if (pageNumber > 1) {
+        doc.setDrawColor(226, 232, 240);
+        doc.setLineWidth(0.5);
+        doc.line(MARGIN_X, 35, PAGE_WIDTH - MARGIN_X, 35);
+        if (logoDataUrl) {
+            doc.addImage(logoDataUrl, "PNG", MARGIN_X, 10, 20, 20);
+        }
+        return;
     }
 
-    doc.setDrawColor(226, 232, 240);
-    doc.setLineWidth(0.6);
-    doc.line(MARGIN_X, 82, PAGE_WIDTH - MARGIN_X, 82);
+    doc.setFillColor(248, 250, 252);
+    doc.rect(0, 0, PAGE_WIDTH, 110, "F");
+
+    if (logoDataUrl) {
+        doc.addImage(logoDataUrl, "PNG", MARGIN_X, 20, 60, 60);
+    }
 
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(14);
-    doc.setTextColor(15, 23, 42);
-    doc.text(settings.companyName || COMPANY.name, PAGE_WIDTH / 2, 28, { align: "center" });
+    doc.setFontSize(22);
+    doc.setTextColor(30, 58, 138);
+    doc.text(settings.companyName || "", PAGE_WIDTH - MARGIN_X, 35, { align: "right" });
 
     doc.setFont("helvetica", "normal");
-    doc.setFontSize(8.5);
-    doc.setTextColor(51, 65, 85);
-    doc.text(settings.companyAddress1 || COMPANY.address1, PAGE_WIDTH / 2, 45, { align: "center" });
-    if (settings.companyAddress2 || COMPANY.address2) {
-        doc.text(settings.companyAddress2 || COMPANY.address2, PAGE_WIDTH / 2, 59, { align: "center" });
+    doc.setFontSize(9);
+    doc.setTextColor(71, 85, 105);
+    doc.text(settings.companyAddress1 || "", PAGE_WIDTH - MARGIN_X, 50, { align: "right" });
+    if (settings.companyAddress2) {
+        doc.text(settings.companyAddress2, PAGE_WIDTH - MARGIN_X, 62, { align: "right" });
     }
-    doc.text(settings.gstin || COMPANY.gstin, MARGIN_X, 74);
-    doc.text(settings.udyam || COMPANY.udyam, PAGE_WIDTH - MARGIN_X, 74, { align: "right" });
 
     doc.setFontSize(8);
-    doc.setTextColor(71, 85, 105);
-    doc.text(`Contact No.:- ${settings.contact1Name || COMPANY.contacts[0].name}: ${settings.contact1Phone || COMPANY.contacts[0].phone}`, MARGIN_X, PAGE_HEIGHT - 32);
-    const c2Name = settings.contact2Name || COMPANY.contacts[1].name;
-    const c2Phone = settings.contact2Phone || COMPANY.contacts[1].phone;
-    if (c2Name || c2Phone) {
-        doc.text(`${c2Name}: ${c2Phone}`, MARGIN_X + 58, PAGE_HEIGHT - 18);
+    doc.setTextColor(100, 116, 139);
+    let certs = [];
+    if (settings.gstin) certs.push(`GSTIN: ${settings.gstin}`);
+    if (settings.udyam) certs.push(`UDYAM: ${settings.udyam}`);
+    if (certs.length > 0) {
+        doc.text(certs.join("  |  "), PAGE_WIDTH - MARGIN_X, 76, { align: "right" });
     }
-    doc.text(`Page ${pageNumber} of ${PAGE_COUNT}`, PAGE_WIDTH - MARGIN_X, PAGE_HEIGHT - 18, { align: "right" });
+
+    doc.setFillColor(37, 99, 235);
+    doc.rect(0, 110, PAGE_WIDTH, 3, "F");
+}
+
+function drawFooter(doc, pageNumber, logoDataUrl, settings) {
+    doc.setDrawColor(226, 232, 240);
+    doc.setLineWidth(0.5);
+    doc.line(MARGIN_X, PAGE_HEIGHT - 45, PAGE_WIDTH - MARGIN_X, PAGE_HEIGHT - 45);
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9);
+    doc.setTextColor(37, 99, 235);
+    doc.text("https://www.vrsolartech.in/", MARGIN_X, PAGE_HEIGHT - 32);
+
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(71, 85, 105);
+    
+    let contacts = [];
+    if (settings.contact1Name || settings.contact1Phone) {
+        contacts.push(`${settings.contact1Name || "Contact"}: ${settings.contact1Phone || ""}`.trim());
+    }
+    if (settings.contact2Name || settings.contact2Phone) {
+        contacts.push(`${settings.contact2Name || "Contact"}: ${settings.contact2Phone || ""}`.trim());
+    }
+    if (contacts.length > 0) {
+        doc.text(contacts.join("  |  "), PAGE_WIDTH / 2, PAGE_HEIGHT - 32, { align: "center" });
+    }
+
+    doc.setFont("helvetica", "italic");
+    doc.setTextColor(148, 163, 184);
+    doc.text(`Page ${pageNumber} of ${PAGE_COUNT}`, PAGE_WIDTH - MARGIN_X, PAGE_HEIGHT - 32, { align: "right" });
 }
 
 function addPage(doc, pageNumber, logoDataUrl, settings) {
     if (pageNumber > 1) doc.addPage();
     drawHeader(doc, pageNumber, logoDataUrl, settings);
-    return 105;
+    drawFooter(doc, pageNumber, logoDataUrl, settings);
+    return pageNumber === 1 ? 140 : 60;
 }
 
 function sectionTitle(doc, title, y) {
@@ -178,9 +217,14 @@ function buildPageOne(doc, lead, type, logoDataUrl, settings) {
     const today = new Date();
 
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(15);
-    doc.setTextColor(15, 23, 42);
-    doc.text("Quotation", PAGE_WIDTH / 2, y, { align: "center" });
+    doc.setFontSize(28);
+    doc.setTextColor(30, 58, 138);
+    doc.text("QUOTATION", PAGE_WIDTH / 2, y, { align: "center" });
+    y += 24;
+
+    doc.setDrawColor(37, 99, 235);
+    doc.setLineWidth(1.5);
+    doc.line(PAGE_WIDTH / 2 - 40, y, PAGE_WIDTH / 2 + 40, y);
     y += 28;
 
     doc.setFontSize(9.5);
@@ -209,7 +253,8 @@ function buildPageOne(doc, lead, type, logoDataUrl, settings) {
     y += 34;
 
     y = sectionTitle(doc, "Statement of Confidentiality", y);
-    y = paragraph(doc, "These documents contain proprietary trade secret and confidential information to be used solely for evaluating VR SolarTech. The information contained herein is to be considered confidential. Customer, by receiving these documents agrees that neither this document nor the information disclosed herein, nor any part thereof, shall be reproduced or transferred to other documents or used or disclosed to others for any purpose except as specifically authorized in writing by VR SolarTech.", y, { lineHeight: 14 });
+    const cname = settings.companyName || "our company";
+    y = paragraph(doc, `These documents contain proprietary trade secret and confidential information to be used solely for evaluating ${cname}. The information contained herein is to be considered confidential. Customer, by receiving these documents agrees that neither this document nor the information disclosed herein, nor any part thereof, shall be reproduced or transferred to other documents or used or disclosed to others for any purpose except as specifically authorized in writing by ${cname}.`, y, { lineHeight: 14 });
 
     y += 14;
     autoTable(doc, {
