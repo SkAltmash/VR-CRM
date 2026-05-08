@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback } from "react";
-import { collection, addDoc, updateDoc, deleteDoc, doc, query, orderBy, limit, startAfter, getDocs, writeBatch, serverTimestamp, getCountFromServer, getDoc } from "firebase/firestore";
+import { collection, addDoc, updateDoc, deleteDoc, doc, query, orderBy, limit, startAfter, getDocs, writeBatch, serverTimestamp, getCountFromServer, getDoc, where } from "firebase/firestore";
 import { db } from "../../firebase";
 import { motion, AnimatePresence } from "framer-motion";
-import { Plus, Upload, Search, Edit2, Eye, Trash2, Loader2, ChevronLeft, ChevronRight, CheckSquare, Square, X, Merge, Download, FileText, Briefcase, ChevronDown, Settings2 } from "lucide-react";
+import { Plus, Upload, Search, Edit2, Eye, Trash2, Loader2, ChevronLeft, ChevronRight, CheckSquare, Square, X, Merge, Download, FileText, Briefcase, ChevronDown, Settings2, Pin, PinOff } from "lucide-react";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -71,6 +71,7 @@ function mapLeadForExport(data) {
 
 export default function Leads() {
     const [leads, setLeads] = useState([]);
+    const [pinnedLeads, setPinnedLeads] = useState([]);
     const [loading, setLoading] = useState(true);
     const [searchParams, setSearchParams] = useSearchParams();
     const [search, setSearch] = useState("");
@@ -102,11 +103,57 @@ export default function Leads() {
     // Bulk selection
     const [selected, setSelected] = useState(new Set());
     const [bulkDeleting, setBulkDeleting] = useState(false);
+    const [selectionMode, setSelectionMode] = useState(false);
+    const [focusedIndex, setFocusedIndex] = useState(-1);
+
+    useEffect(() => {
+        setFocusedIndex(-1);
+    }, [page, search, filterStatus, dateFilter]);
 
     // Fetch total count
     useEffect(() => {
         getCountFromServer(collection(db, "leads")).then((snap) => setTotalCount(snap.data().count)).catch(() => { });
     }, [leads]);
+
+    const fetchPinnedLeads = useCallback(async () => {
+        try {
+            const q = query(collection(db, "leads"), where("isPinned", "==", true));
+            const snap = await getDocs(q);
+            const data = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+            data.sort((a, b) => {
+                const aTime = a.createdAt?.seconds || 0;
+                const bTime = b.createdAt?.seconds || 0;
+                return bTime - aTime;
+            });
+            setPinnedLeads(data);
+        } catch (err) {
+            console.error("Failed to fetch pinned leads:", err);
+        }
+    }, []);
+
+    useEffect(() => {
+        fetchPinnedLeads();
+    }, [fetchPinnedLeads]);
+
+    async function handlePinToggle(lead) {
+        const newPinnedStatus = !lead.isPinned;
+        
+        // Optimistic update
+        if (newPinnedStatus) {
+            setPinnedLeads(prev => [{...lead, isPinned: true}, ...prev].sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)));
+        } else {
+            setPinnedLeads(prev => prev.filter(l => l.id !== lead.id));
+        }
+
+        try {
+            await updateDoc(doc(db, "leads", lead.id), { isPinned: newPinnedStatus });
+            await logActivity(lead.id, `Lead ${newPinnedStatus ? "pinned" : "unpinned"}`, "update");
+        } catch (error) {
+            console.error("Failed to toggle pin:", error);
+            toast.error("Failed to update pin status.");
+            fetchPinnedLeads(); // Revert on failure
+        }
+    }
 
     const leadId = searchParams.get("lead");
     
@@ -224,6 +271,7 @@ export default function Leads() {
         setPage(1);
         setPageSnapshots([]);
         setSelected(new Set());
+        fetchPinnedLeads();
         fetchPage();
     }
 
@@ -498,7 +546,7 @@ export default function Leads() {
     }
 
     // Client-side filtering (search, status, date)
-    const filtered = leads.filter((l) => {
+    const filterLeadsArray = (leadArray) => leadArray.filter((l) => {
         const matchSearch = !search || [l.name, l.phone, l.email, l.company].some((v) => v?.toLowerCase().includes(search.toLowerCase()));
         const matchStatus = filterStatus === "All" || l.status === filterStatus;
 
@@ -514,8 +562,41 @@ export default function Leads() {
         return matchSearch && matchStatus && matchDate;
     });
 
+    const filteredPinned = filterLeadsArray(pinnedLeads);
+    const filteredPaginated = filterLeadsArray(leads).filter(l => !pinnedLeads.find(p => p.id === l.id));
+    const filtered = [...filteredPinned, ...filteredPaginated];
+
     const statuses = ["All", ...Object.keys(statusStyle)];
     const totalPages = Math.ceil(totalCount / PAGE_SIZE);
+
+    // Keyboard navigation — placed after filtered is computed
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    useEffect(() => {
+        function handleKeyDown(e) {
+            if (modalOpen || viewOpen || bulkOpen || mergeOpen || convertOpen) return;
+            if (["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement?.tagName)) return;
+
+            if (e.key === "ArrowDown") {
+                e.preventDefault();
+                setFocusedIndex(prev => Math.min(prev + 1, filtered.length - 1));
+            } else if (e.key === "ArrowUp") {
+                e.preventDefault();
+                setFocusedIndex(prev => Math.max(prev - 1, 0));
+            } else if (e.key === "Enter" && focusedIndex >= 0 && focusedIndex < filtered.length) {
+                e.preventDefault();
+                const lead = filtered[focusedIndex];
+                setSearchParams(prev => {
+                    prev.set("lead", lead.id);
+                    return prev;
+                });
+            } else if (e.key === "Escape") {
+                setFocusedIndex(-1);
+            }
+        }
+
+        window.addEventListener("keydown", handleKeyDown);
+        return () => window.removeEventListener("keydown", handleKeyDown);
+    }, [filtered, modalOpen, viewOpen, bulkOpen, mergeOpen, convertOpen, focusedIndex, setSearchParams]);
 
     return (
         <div className="max-w-6xl">
@@ -526,6 +607,13 @@ export default function Leads() {
                     <p className="text-sm text-slate-500 mt-1">{totalCount} total leads</p>
                 </div>
                 <div className="flex items-center gap-3">
+                    <button onClick={() => {
+                        setSelectionMode(!selectionMode);
+                        if (selectionMode) setSelected(new Set());
+                    }} className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border text-sm font-semibold cursor-pointer transition-all ${selectionMode ? 'bg-blue-50 border-blue-200 text-blue-600 shadow-sm' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50 shadow-sm'}`}>
+                        <CheckSquare size={16} className={selectionMode ? "text-blue-500" : "text-slate-500"} />
+                        <span className="hidden sm:inline">{selectionMode ? "Done" : "Select"}</span>
+                    </button>
                     <div className="relative">
                         <button onClick={() => setActionsOpen(!actionsOpen)} className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 text-slate-700 text-sm font-semibold cursor-pointer hover:bg-slate-50 hover:border-slate-300 bg-white shadow-sm transition-all">
                             <Settings2 size={16} className="text-slate-500" /> Actions <ChevronDown size={14} className={`text-slate-400 transition-transform ${actionsOpen ? "rotate-180" : ""}`} />
@@ -617,26 +705,33 @@ export default function Leads() {
                         <table className="w-full border-collapse text-left">
                             <thead>
                                 <tr className="bg-slate-50">
-                                    <th className="w-10 py-3 px-3 border-b border-slate-200">
+                                    {selectionMode && (
+                                    <th className="w-10 py-3 px-3 border-b border-slate-200 transition-all">
                                         <button onClick={toggleSelectAll} className="flex items-center justify-center w-5 h-5 border-none bg-transparent cursor-pointer text-slate-400 hover:text-blue-500 transition-colors">
                                             {selected.size > 0 && selected.size === filtered.length ? <CheckSquare size={18} className="text-blue-500" /> : <Square size={18} />}
                                         </button>
                                     </th>
+                                    )}
                                     {["Name", "Phone", "Email", "Source", "Status", "Actions"].map((h) => (
-                                        <th key={h} className="text-xs font-semibold uppercase tracking-wider text-slate-500 py-3 px-4 border-b border-slate-200">{h}</th>
+                                        <th key={h} className={`text-xs font-semibold uppercase tracking-wider text-slate-500 py-3 px-4 border-b border-slate-200 ${h === "Actions" ? "text-right" : ""}`}>{h}</th>
                                     ))}
                                 </tr>
                             </thead>
                             <tbody>
-                                {filtered.map((lead) => (
-                                    <tr key={lead.id} className={`transition-colors ${selected.has(lead.id) ? "bg-blue-50/60" : "hover:bg-slate-50"}`}>
-                                        <td className="py-3.5 px-3 border-b border-slate-100">
+                                {filtered.map((lead, index) => (
+                                    <tr key={lead.id} className={`group transition-colors ${selected.has(lead.id) ? "bg-blue-50/60" : lead.isPinned ? "bg-amber-50/30 hover:bg-amber-50/50" : "hover:bg-slate-50"} ${focusedIndex === index ? "ring-1 ring-inset ring-blue-500 bg-blue-50/40" : ""}`}>
+                                        {selectionMode && (
+                                        <td className="py-3.5 px-3 border-b border-slate-100 transition-all">
                                             <button onClick={() => toggleSelect(lead.id)} className="flex items-center justify-center w-5 h-5 border-none bg-transparent cursor-pointer text-slate-400 hover:text-blue-500 transition-colors">
                                                 {selected.has(lead.id) ? <CheckSquare size={18} className="text-blue-500" /> : <Square size={18} />}
                                             </button>
                                         </td>
+                                        )}
                                         <td className="py-3.5 px-4 text-sm font-medium text-slate-800 border-b border-slate-100">
-                                            <div>{lead.name}</div>
+                                            <div className="flex items-center gap-1.5">
+                                                {lead.name}
+                                                {lead.isPinned && <Pin size={12} className="text-amber-500 fill-amber-500" />}
+                                            </div>
                                             {lead.company && <div className="text-xs text-slate-400 mt-0.5">{lead.company}</div>}
                                             {lead.tags?.length > 0 && (
                                                 <div className="flex flex-wrap gap-1 mt-1">
@@ -666,20 +761,25 @@ export default function Leads() {
                                             )}
                                         </td>
                                         <td className="py-3.5 px-4 border-b border-slate-100">
-                                            <div className="flex items-center gap-1">
-                                                {lead.status === "Converted" && (
-                                                    <button onClick={() => { setLeadToConvert(lead); setConvertOpen(true); }} className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:bg-emerald-50 hover:text-emerald-500 border-none bg-transparent cursor-pointer transition-all" title="Add Another Project">
-                                                        <Briefcase size={16} />
+                                            <div className="flex items-center justify-end gap-1">
+                                                <div className={`flex items-center gap-1 transition-opacity duration-200 ${focusedIndex === index ? 'opacity-100' : 'opacity-100 xl:opacity-0 xl:group-hover:opacity-100 focus-within:opacity-100'}`}>
+                                                    <button onClick={() => handlePinToggle(lead)} className={`w-8 h-8 flex items-center justify-center rounded-lg border-none bg-transparent cursor-pointer transition-all ${lead.isPinned ? "text-amber-500 hover:bg-amber-100" : "text-slate-400 hover:bg-amber-50 hover:text-amber-500"}`} title={lead.isPinned ? "Unpin" : "Pin to top"}>
+                                                        {lead.isPinned ? <PinOff size={16} /> : <Pin size={16} />}
                                                     </button>
-                                                )}
-                                                <button onClick={() => openView(lead)} className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:bg-blue-50 hover:text-blue-500 border-none bg-transparent cursor-pointer transition-all" title="View">
+                                                    {lead.status === "Converted" && (
+                                                        <button onClick={() => { setLeadToConvert(lead); setConvertOpen(true); }} className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:bg-emerald-50 hover:text-emerald-500 border-none bg-transparent cursor-pointer transition-all" title="Add Another Project">
+                                                            <Briefcase size={16} />
+                                                        </button>
+                                                    )}
+                                                    <button onClick={() => openEdit(lead)} className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:bg-amber-50 hover:text-amber-500 border-none bg-transparent cursor-pointer transition-all" title="Edit">
+                                                        <Edit2 size={16} />
+                                                    </button>
+                                                    <button onClick={() => handleDelete(lead.id)} disabled={deleting === lead.id || lead.status === "Converted"} className={`w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-500 border-none bg-transparent transition-all disabled:opacity-50 ${lead.status === "Converted" ? "cursor-not-allowed" : "cursor-pointer"}`} title={lead.status === "Converted" ? "Cannot delete converted leads" : "Delete"}>
+                                                        {deleting === lead.id ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
+                                                    </button>
+                                                </div>
+                                                <button onClick={() => openView(lead)} className={`w-8 h-8 flex items-center justify-center rounded-lg border-none bg-transparent cursor-pointer transition-all ${focusedIndex === index ? 'text-blue-500 bg-blue-50' : 'text-slate-300 hover:bg-blue-50 hover:text-blue-500 group-hover:text-blue-500'}`} title="View">
                                                     <Eye size={16} />
-                                                </button>
-                                                <button onClick={() => openEdit(lead)} className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:bg-amber-50 hover:text-amber-500 border-none bg-transparent cursor-pointer transition-all" title="Edit">
-                                                    <Edit2 size={16} />
-                                                </button>
-                                                <button onClick={() => handleDelete(lead.id)} disabled={deleting === lead.id || lead.status === "Converted"} className={`w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-500 border-none bg-transparent transition-all disabled:opacity-50 ${lead.status === "Converted" ? "cursor-not-allowed" : "cursor-pointer"}`} title={lead.status === "Converted" ? "Cannot delete converted leads" : "Delete"}>
-                                                    {deleting === lead.id ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
                                                 </button>
                                             </div>
                                         </td>

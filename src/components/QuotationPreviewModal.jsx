@@ -41,14 +41,14 @@ export default function QuotationPreviewModal({ isOpen, lead, onClose, onActivit
     const [uploadingImage, setUploadingImage] = useState(false);
 
     const FORM_TABS = [
-        { id: "details",       label: "General" },
-        { id: "howItWorks",    label: "How It Works" },
-        { id: "images",        label: "Images" },
-        { id: "warrantee",     label: "Warrantee Details" },
+        { id: "details", label: "General" },
+        { id: "howItWorks", label: "How It Works" },
+        { id: "images", label: "Images" },
+        { id: "warrantee", label: "Warrantee Details" },
         { id: "specification", label: "Materials & Financials" },
-        { id: "financials",    label: "Financials" },
-        { id: "scope",         label: "Benefits & Terms" },
-        { id: "terms",         label: "Terms & Delivery" },
+        { id: "financials", label: "Financials" },
+        { id: "scope", label: "Benefits & Terms" },
+        { id: "terms", label: "Terms & Delivery" },
     ];
 
     const selectedType = useMemo(
@@ -86,7 +86,7 @@ export default function QuotationPreviewModal({ isOpen, lead, onClose, onActivit
             .finally(() => {
                 if (isMounted) setFetching(false);
             });
-            
+
         return () => { isMounted = false; };
     }, [isOpen]);
 
@@ -155,9 +155,9 @@ export default function QuotationPreviewModal({ isOpen, lead, onClose, onActivit
 
     async function handleWhatsApp() {
         setAction("whatsapp");
-        
+
         const number = lead?.phone ? lead.phone.replace(/\D/g, "") : "";
-        
+
         // Copy to clipboard if available
         if (number) {
             try {
@@ -169,7 +169,7 @@ export default function QuotationPreviewModal({ isOpen, lead, onClose, onActivit
 
         try {
             const { file } = await createQuotationFile(lead, formData);
-            
+
             // Attempt to use Web Share API (auto-attaches the file on supported devices)
             if (navigator.canShare && navigator.canShare({ files: [file] })) {
                 try {
@@ -266,27 +266,27 @@ export default function QuotationPreviewModal({ isOpen, lead, onClose, onActivit
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={onClose}>
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl h-[90vh] flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
                 {/* ── Header ── */}
-                <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white shrink-0">
+                <div className="flex items-center justify-between px-6 py-3.5 border-b border-slate-100 bg-white shrink-0">
                     <div className="flex items-center gap-3 min-w-0">
-                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 text-white flex items-center justify-center shrink-0 shadow-md shadow-blue-500/20">
-                            <FileText size={18} />
+                        <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 text-white flex items-center justify-center shrink-0 shadow-sm shadow-blue-500/30">
+                            <Zap size={16} />
                         </div>
                         <div className="min-w-0">
-                            <h2 className="text-base font-bold text-slate-800">Quotation Generator</h2>
-                            <p className="text-xs text-slate-400">{lead.name} &mdash; {lead.phone || "No phone"}</p>
+                            <h2 className="text-sm font-bold text-slate-800">Quotation Generator</h2>
+                            <p className="text-xs text-slate-400 truncate max-w-[220px]">{lead.name} · {lead.phone || "No phone"}</p>
                         </div>
                     </div>
-                    <div className="flex items-center gap-3">
-                        <div className="flex bg-slate-100 p-1 rounded-xl">
-                            <button onClick={() => setActiveTab("form")} className={`flex items-center gap-1.5 px-4 py-1.5 text-sm font-semibold rounded-lg transition-all ${activeTab === "form" ? "bg-white text-blue-600 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}>
-                                <Edit size={14}/> Edit
+                    <div className="flex items-center gap-2">
+                        <div className="flex bg-slate-100 p-0.5 rounded-lg gap-0.5">
+                            <button onClick={() => setActiveTab("form")} className={`flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold rounded-md transition-all ${activeTab === "form" ? "bg-white text-blue-600 shadow-sm" : "text-slate-500 hover:text-slate-700 bg-transparent border-none"}`}>
+                                <Edit size={12} /> Edit
                             </button>
-                            <button onClick={() => setActiveTab("preview")} className={`flex items-center gap-1.5 px-4 py-1.5 text-sm font-semibold rounded-lg transition-all ${activeTab === "preview" ? "bg-white text-blue-600 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}>
-                                <Eye size={14}/> Preview
+                            <button onClick={() => setActiveTab("preview")} className={`flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold rounded-md transition-all ${activeTab === "preview" ? "bg-white text-blue-600 shadow-sm" : "text-slate-500 hover:text-slate-700 bg-transparent border-none"}`}>
+                                <Eye size={12} /> Preview
                             </button>
                         </div>
-                        <button onClick={onClose} className="w-9 h-9 flex items-center justify-center rounded-xl text-slate-400 hover:bg-slate-100 hover:text-slate-700 border-none bg-transparent cursor-pointer transition-all">
-                            <X size={20} />
+                        <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 border-none bg-transparent cursor-pointer transition-all">
+                            <X size={18} />
                         </button>
                     </div>
                 </div>
@@ -306,27 +306,17 @@ export default function QuotationPreviewModal({ isOpen, lead, onClose, onActivit
                                     const isSelected = selectedTypeId === type.id;
                                     return (
                                         <button key={type.id} type="button" onClick={() => setSelectedTypeId(type.id)}
-                                            className={`flex items-center gap-2.5 w-full text-left rounded-lg px-2 py-1.5 cursor-pointer transition-all duration-150 ${
-                                                isSelected
+                                            className={`flex items-center gap-2.5 w-full text-left rounded-lg px-2 py-1.5 cursor-pointer transition-all duration-150 ${isSelected
                                                     ? "bg-blue-50 ring-1 ring-blue-400"
                                                     : "hover:bg-slate-100"
-                                            }`}
+                                                }`}
                                         >
-                                            {/* Thumbnail */}
-                                            <div className="relative w-11 h-11 rounded-md overflow-hidden shrink-0">
-                                                <img src={img} alt={type.name} className="w-full h-full object-cover" onError={e => { e.currentTarget.src = "/Quotation/Setup.png"; }} />
-                                                {isSelected && (
-                                                    <div className="absolute inset-0 bg-blue-500/30 flex items-center justify-center">
-                                                        <CheckCircle2 size={14} className="text-white drop-shadow" />
-                                                    </div>
-                                                )}
-                                            </div>
+
                                             {/* Info */}
                                             <div className="min-w-0">
                                                 <p className={`text-xs font-semibold leading-tight truncate ${isSelected ? "text-blue-700" : "text-slate-700"}`}>{type.name}</p>
-                                                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full mt-0.5 inline-block ${
-                                                    isSelected ? "bg-blue-100 text-blue-600" : "bg-slate-200 text-slate-500"
-                                                }`}>{type.badge || "Template"}</span>
+                                                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full mt-0.5 inline-block ${isSelected ? "bg-blue-100 text-blue-600" : "bg-slate-200 text-slate-500"
+                                                    }`}>{type.badge || "Template"}</span>
                                             </div>
                                         </button>
                                     );
@@ -343,9 +333,8 @@ export default function QuotationPreviewModal({ isOpen, lead, onClose, onActivit
                                 <div className="border-b border-slate-100 bg-white px-5 flex gap-1 overflow-x-auto shrink-0">
                                     {FORM_TABS.map((tab) => (
                                         <button key={tab.id} onClick={() => setFormTab(tab.id)}
-                                            className={`whitespace-nowrap px-3 py-3 text-[13px] font-semibold border-b-2 transition-all ${
-                                                formTab === tab.id ? "border-blue-500 text-blue-600" : "border-transparent text-slate-400 hover:text-slate-600"
-                                            }`}
+                                            className={`whitespace-nowrap px-3 py-3 text-[13px] font-semibold border-b-2 transition-all ${formTab === tab.id ? "border-blue-500 text-blue-600" : "border-transparent text-slate-400 hover:text-slate-600"
+                                                }`}
                                         >{tab.label}</button>
                                     ))}
                                 </div>
@@ -366,7 +355,7 @@ export default function QuotationPreviewModal({ isOpen, lead, onClose, onActivit
                                                     <label className="block text-xs text-slate-500 mb-1">Introduction</label>
                                                     <textarea value={formData.intro || ""} onChange={(e) => handleFormChange(e, "intro")} className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-blue-500 min-h-[80px]" />
                                                 </div>
-                                                
+
                                                 <div className="col-span-2 mt-4"><h3 className="font-semibold text-slate-800 mb-2 border-b pb-2">Benefits</h3></div>
                                                 <div>
                                                     <label className="block text-xs text-slate-500 mb-1">Benefits Title</label>
@@ -376,10 +365,10 @@ export default function QuotationPreviewModal({ isOpen, lead, onClose, onActivit
                                                     {formData.benefits?.map((benefit, i) => (
                                                         <div key={i} className="flex gap-2">
                                                             <input type="text" value={benefit} onChange={(e) => updateArrayRow("benefits", i, null, e.target.value)} className="flex-1 text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-blue-500" />
-                                                            <button onClick={() => removeArrayRow("benefits", i)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg"><Minus size={16}/></button>
+                                                            <button onClick={() => removeArrayRow("benefits", i)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg"><Minus size={16} /></button>
                                                         </div>
                                                     ))}
-                                                    <button onClick={() => addArrayRow("benefits", "")} className="self-start flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700 font-medium px-2 py-1"><Plus size={16}/> Add Benefit</button>
+                                                    <button onClick={() => addArrayRow("benefits", "")} className="self-start flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700 font-medium px-2 py-1"><Plus size={16} /> Add Benefit</button>
                                                 </div>
                                             </div>
                                         )}
@@ -456,10 +445,10 @@ export default function QuotationPreviewModal({ isOpen, lead, onClose, onActivit
                                                     {formData.warranteeNotes?.map((note, i) => (
                                                         <div key={i} className="flex gap-2 mb-2">
                                                             <input type="text" value={note} onChange={(e) => updateArrayRow("warranteeNotes", i, null, e.target.value)} className="flex-1 text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-blue-500" />
-                                                            <button onClick={() => removeArrayRow("warranteeNotes", i)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg"><Minus size={16}/></button>
+                                                            <button onClick={() => removeArrayRow("warranteeNotes", i)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg"><Minus size={16} /></button>
                                                         </div>
                                                     ))}
-                                                    <button onClick={() => addArrayRow("warranteeNotes", "")} className="self-start flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700 font-medium px-2 py-1"><Plus size={16}/> Add Note</button>
+                                                    <button onClick={() => addArrayRow("warranteeNotes", "")} className="self-start flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700 font-medium px-2 py-1"><Plus size={16} /> Add Note</button>
                                                 </div>
                                                 <div>
                                                     <label className="block text-sm font-semibold text-slate-700 mb-2">Warrantee Page Image (Optional)</label>
@@ -489,10 +478,10 @@ export default function QuotationPreviewModal({ isOpen, lead, onClose, onActivit
                                                         <textarea value={row[0]} onChange={(e) => updateArrayRow("materialRows", i, 0, e.target.value)} className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-blue-500 min-h-[60px]" />
                                                         <textarea value={row[1]} onChange={(e) => updateArrayRow("materialRows", i, 1, e.target.value)} className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-blue-500 min-h-[60px]" />
                                                         <textarea value={row[2]} onChange={(e) => updateArrayRow("materialRows", i, 2, e.target.value)} className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-blue-500 min-h-[60px]" />
-                                                        <button onClick={() => removeArrayRow("materialRows", i)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg mt-1"><Minus size={18}/></button>
+                                                        <button onClick={() => removeArrayRow("materialRows", i)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg mt-1"><Minus size={18} /></button>
                                                     </div>
                                                 ))}
-                                                <button onClick={() => addArrayRow("materialRows", ["", "", ""])} className="self-start flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700 font-medium px-2 py-1 bg-blue-50 rounded-lg mt-2"><Plus size={16}/> Add Material Row</button>
+                                                <button onClick={() => addArrayRow("materialRows", ["", "", ""])} className="self-start flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700 font-medium px-2 py-1 bg-blue-50 rounded-lg mt-2"><Plus size={16} /> Add Material Row</button>
                                             </div>
                                         )}
 
@@ -513,11 +502,11 @@ export default function QuotationPreviewModal({ isOpen, lead, onClose, onActivit
                                                         <input type="text" value={row[2]} onChange={(e) => updateArrayRow("financialRows", i, 2, e.target.value)} className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-blue-500" />
                                                         <input type="text" value={row[3]} onChange={(e) => updateArrayRow("financialRows", i, 3, e.target.value)} className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-blue-500" />
                                                         <input type="text" value={row[4]} onChange={(e) => updateArrayRow("financialRows", i, 4, e.target.value)} className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-blue-500" />
-                                                        <button onClick={() => removeArrayRow("financialRows", i)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg"><Minus size={18}/></button>
+                                                        <button onClick={() => removeArrayRow("financialRows", i)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg"><Minus size={18} /></button>
                                                     </div>
                                                 ))}
-                                                <button onClick={() => addArrayRow("financialRows", ["", "", "", "", ""])} className="self-start flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700 font-medium px-2 py-1 bg-blue-50 rounded-lg mt-2"><Plus size={16}/> Add Row</button>
-                                                
+                                                <button onClick={() => addArrayRow("financialRows", ["", "", "", "", ""])} className="self-start flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700 font-medium px-2 py-1 bg-blue-50 rounded-lg mt-2"><Plus size={16} /> Add Row</button>
+
                                                 <div className="mt-6 border-t pt-4 grid grid-cols-2 gap-4">
                                                     <div>
                                                         <label className="block text-xs text-slate-500 mb-1">Amount Label (Total)</label>
@@ -537,10 +526,10 @@ export default function QuotationPreviewModal({ isOpen, lead, onClose, onActivit
                                                 {formData.clientScope?.map((scope, i) => (
                                                     <div key={i} className="flex gap-2">
                                                         <input type="text" value={scope} onChange={(e) => updateArrayRow("clientScope", i, null, e.target.value)} className="flex-1 text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-blue-500" />
-                                                        <button onClick={() => removeArrayRow("clientScope", i)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg"><Minus size={18}/></button>
+                                                        <button onClick={() => removeArrayRow("clientScope", i)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg"><Minus size={18} /></button>
                                                     </div>
                                                 ))}
-                                                <button onClick={() => addArrayRow("clientScope", "")} className="self-start flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700 font-medium px-2 py-1 bg-blue-50 rounded-lg"><Plus size={16}/> Add Scope</button>
+                                                <button onClick={() => addArrayRow("clientScope", "")} className="self-start flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700 font-medium px-2 py-1 bg-blue-50 rounded-lg"><Plus size={16} /> Add Scope</button>
                                             </div>
                                         )}
 
@@ -550,11 +539,11 @@ export default function QuotationPreviewModal({ isOpen, lead, onClose, onActivit
                                                 {formData.paymentTerms?.map((term, i) => (
                                                     <div key={i} className="flex gap-2">
                                                         <input type="text" value={term} onChange={(e) => updateArrayRow("paymentTerms", i, null, e.target.value)} className="flex-1 text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-blue-500" />
-                                                        <button onClick={() => removeArrayRow("paymentTerms", i)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg"><Minus size={18}/></button>
+                                                        <button onClick={() => removeArrayRow("paymentTerms", i)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg"><Minus size={18} /></button>
                                                     </div>
                                                 ))}
-                                                <button onClick={() => addArrayRow("paymentTerms", "")} className="self-start flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700 font-medium px-2 py-1 bg-blue-50 rounded-lg mb-4"><Plus size={16}/> Add Term</button>
-                                                
+                                                <button onClick={() => addArrayRow("paymentTerms", "")} className="self-start flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700 font-medium px-2 py-1 bg-blue-50 rounded-lg mb-4"><Plus size={16} /> Add Term</button>
+
                                                 <div className="mt-2">
                                                     <label className="block text-xs font-semibold text-slate-800 mb-1">Delivery Info</label>
                                                     <textarea value={formData.delivery || ""} onChange={(e) => handleFormChange(e, "delivery")} className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-blue-500 min-h-[80px]" />
