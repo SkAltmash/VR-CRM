@@ -1,18 +1,54 @@
 import { useState, useEffect, useCallback } from "react";
-import { collection, query, orderBy, getDocs, updateDoc, doc, serverTimestamp, getCountFromServer } from "firebase/firestore";
+import { collection, query, orderBy, getDocs, updateDoc, doc, serverTimestamp, addDoc, limit, startAfter, getCountFromServer, getDoc } from "firebase/firestore";
 import { db } from "../../firebase";
 import { motion } from "framer-motion";
-import { Loader2, Search, Eye, Edit2, IndianRupee, Plus, Briefcase } from "lucide-react";
+import { Loader2, Search, Eye, IndianRupee, Plus, Briefcase, ChevronLeft, ChevronRight } from "lucide-react";
 import toast from "react-hot-toast";
 import ViewClientModal from "../components/ViewClientModal";
 import PaymentModal from "../components/PaymentModal";
 import AddClientModal from "../components/AddClientModal";
+import { useSearchParams } from "react-router-dom";
+
+const PAGE_SIZE = 25;
+
+const projectStatusStyle = {
+    "In Progress": { badge: "bg-blue-500 text-white",    select: "bg-blue-50 text-blue-600 border-blue-200" },
+    "Completed":   { badge: "bg-emerald-500 text-white", select: "bg-emerald-50 text-emerald-600 border-emerald-200" },
+    "On Hold":     { badge: "bg-orange-500 text-white",  select: "bg-orange-50 text-orange-600 border-orange-200" },
+};
+
+function getDateRange(filter) {
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    if (filter === "today") return { start, end: new Date(start.getTime() + 86400000) };
+    if (filter === "this_week") {
+        const day = start.getDay();
+        const monday = new Date(start);
+        monday.setDate(start.getDate() - (day === 0 ? 6 : day - 1));
+        const sunday = new Date(monday);
+        sunday.setDate(monday.getDate() + 7);
+        return { start: monday, end: sunday };
+    }
+    if (filter === "this_month") {
+        return { start: new Date(now.getFullYear(), now.getMonth(), 1), end: new Date(now.getFullYear(), now.getMonth() + 1, 1) };
+    }
+    return null;
+}
 
 export default function Clients() {
     const [clients, setClients] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [searchParams, setSearchParams] = useSearchParams();
     const [search, setSearch] = useState("");
-    
+    const [filterStatus, setFilterStatus] = useState(() => searchParams.get("status") || "All");
+    const [dateFilter, setDateFilter] = useState(() => searchParams.get("date") || "all");
+    const [totalCount, setTotalCount] = useState(0);
+    const [page, setPage] = useState(1);
+    const [pageSnapshots, setPageSnapshots] = useState([]);
+    const [lastDoc, setLastDoc] = useState(null);
+    const [firstDoc, setFirstDoc] = useState(null);
+    const [hasMore, setHasMore] = useState(false);
+
     // Modals
     const [viewOpen, setViewOpen] = useState(false);
     const [viewClient, setViewClient] = useState(null);
@@ -21,13 +57,28 @@ export default function Clients() {
     const [addOpen, setAddOpen] = useState(false);
     const [addClientPrefill, setAddClientPrefill] = useState(null);
 
-    const fetchClients = useCallback(async () => {
+    // Fetch total count
+    useEffect(() => {
+        getCountFromServer(collection(db, "clients"))
+            .then(snap => setTotalCount(snap.data().count))
+            .catch(() => {});
+    }, [clients]);
+
+    const fetchPage = useCallback(async (afterDoc = null) => {
         setLoading(true);
         try {
-            const q = query(collection(db, "clients"), orderBy("createdAt", "desc"));
+            let q;
+            if (afterDoc) {
+                q = query(collection(db, "clients"), orderBy("createdAt", "desc"), startAfter(afterDoc), limit(PAGE_SIZE));
+            } else {
+                q = query(collection(db, "clients"), orderBy("createdAt", "desc"), limit(PAGE_SIZE));
+            }
             const snap = await getDocs(q);
             const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
             setClients(data);
+            setFirstDoc(snap.docs[0] || null);
+            setLastDoc(snap.docs[snap.docs.length - 1] || null);
+            setHasMore(snap.docs.length === PAGE_SIZE);
         } catch (err) {
             console.error("Failed to fetch clients:", err);
         } finally {
@@ -35,16 +86,95 @@ export default function Clients() {
         }
     }, []);
 
-    useEffect(() => {
-        fetchClients();
-    }, [fetchClients]);
+    useEffect(() => { fetchPage(); }, [fetchPage]);
 
-    // Update project status
-    async function handleStatusChange(id, newStatus, oldStatus) {
+    function refresh() {
+        setPage(1);
+        setPageSnapshots([]);
+        fetchPage();
+    }
+
+    function handleNextPage() {
+        if (!lastDoc || !hasMore) return;
+        setPageSnapshots(prev => [...prev, firstDoc]);
+        setPage(p => p + 1);
+        fetchPage(lastDoc);
+    }
+
+    function handlePrevPage() {
+        if (page <= 1) return;
+        const prevSnapshots = [...pageSnapshots];
+        prevSnapshots.pop();
+        setPageSnapshots(prevSnapshots);
+        setPage(p => p - 1);
+        if (prevSnapshots.length === 0) {
+            fetchPage();
+        } else {
+            const cursor = prevSnapshots[prevSnapshots.length - 1];
+            if (cursor) {
+                const doFetch = async () => {
+                    setLoading(true);
+                    try {
+                        const q = query(collection(db, "clients"), orderBy("createdAt", "desc"), startAfter(cursor), limit(PAGE_SIZE));
+                        const snap = await getDocs(q);
+                        setClients(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+                        setFirstDoc(snap.docs[0] || null);
+                        setLastDoc(snap.docs[snap.docs.length - 1] || null);
+                        setHasMore(snap.docs.length === PAGE_SIZE);
+                    } finally { setLoading(false); }
+                };
+                doFetch();
+            }
+        }
+    }
+
+    const clientId = searchParams.get("client");
+    useEffect(() => {
+        if (!clientId) { setViewOpen(false); setViewClient(null); return; }
+        const existing = clients.find(c => c.id === clientId);
+        if (existing) { setViewClient(existing); setViewOpen(true); }
+        else {
+            const fetch = async () => {
+                try {
+                    const snap = await getDoc(doc(db, "clients", clientId));
+                    if (snap.exists()) { setViewClient({ id: snap.id, ...snap.data() }); setViewOpen(true); }
+                    else setSearchParams(prev => { prev.delete("client"); return prev; }, { replace: true });
+                } catch (e) { console.error(e); }
+            };
+            fetch();
+        }
+    }, [clientId, clients, setSearchParams]);
+
+    // Sync filters to URL
+    function setFilterStatusAndUrl(val) {
+        setFilterStatus(val);
+        setSearchParams(prev => {
+            if (val === "All") prev.delete("status");
+            else prev.set("status", val);
+            return prev;
+        }, { replace: true });
+    }
+    function setDateFilterAndUrl(val) {
+        setDateFilter(val);
+        setSearchParams(prev => {
+            if (val === "all") prev.delete("date");
+            else prev.set("date", val);
+            return prev;
+        }, { replace: true });
+    }
+
+    async function handleStatusChange(id, newStatus, oldStatus, client) {
         if (newStatus === oldStatus) return;
         setClients(prev => prev.map(c => c.id === id ? { ...c, status: newStatus } : c));
         try {
             await updateDoc(doc(db, "clients", id), { status: newStatus, updatedAt: serverTimestamp() });
+            const clientKey = client.phone || client.name;
+            await addDoc(collection(db, "client_activity"), {
+                clientKey,
+                message: `Status of project "${client.projectName}" changed to ${newStatus}`,
+                type: "status_change",
+                timestamp: serverTimestamp()
+            });
         } catch (error) {
             console.error("Failed to update status:", error);
             setClients(prev => prev.map(c => c.id === id ? { ...c, status: oldStatus } : c));
@@ -52,9 +182,38 @@ export default function Clients() {
         }
     }
 
-    const filtered = clients.filter((c) => {
-        return !search || [c.name, c.projectName, c.phone].some((v) => v?.toLowerCase().includes(search.toLowerCase()));
+    // Client-side filtering
+    const filtered = clients.filter(c => {
+        const matchSearch = !search || [c.name, c.projectName, c.phone, c.company].some(v => v?.toLowerCase().includes(search.toLowerCase()));
+        const matchStatus = filterStatus === "All" || c.status === filterStatus;
+        let matchDate = true;
+        if (dateFilter !== "all" && c.createdAt) {
+            const range = getDateRange(dateFilter);
+            if (range) {
+                const created = c.createdAt.toDate ? c.createdAt.toDate() : new Date(c.createdAt.seconds * 1000);
+                matchDate = created >= range.start && created < range.end;
+            }
+        }
+        return matchSearch && matchStatus && matchDate;
     });
+
+    // Group by client key — keep only projects matching the current filters
+    const groupedClients = filtered.reduce((acc, client) => {
+        const key = client.phone || client.name;
+        if (!acc[key]) {
+            acc[key] = {
+                clientInfo: { name: client.name, phone: client.phone, email: client.email, company: client.company },
+                projects: []
+            };
+        }
+        acc[key].projects.push(client);
+        return acc;
+    }, {});
+
+    // Hide client groups that have no projects after filtering
+    const visibleGroups = Object.values(groupedClients).filter(g => g.projects.length > 0);
+
+    const totalPages = Math.ceil(totalCount / PAGE_SIZE);
 
     return (
         <div className="max-w-6xl mx-auto">
@@ -62,7 +221,7 @@ export default function Clients() {
             <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
                 <div>
                     <h1 className="text-2xl font-bold text-slate-800">Clients & Projects</h1>
-                    <p className="text-sm text-slate-500 mt-1">{clients.length} total clients</p>
+                    <p className="text-sm text-slate-500 mt-1">{totalCount} total clients</p>
                 </div>
                 <div className="flex items-center gap-3">
                     <button onClick={() => { setAddClientPrefill(null); setAddOpen(true); }} className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-gradient-to-r from-blue-500 to-purple-500 text-white text-sm font-semibold border-none cursor-pointer shadow-md shadow-blue-500/20 hover:-translate-y-0.5 transition-all">
@@ -73,9 +232,36 @@ export default function Clients() {
 
             {/* Filters Row */}
             <div className="flex items-center gap-3 mb-5 flex-wrap">
+                {/* Search */}
                 <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-3 py-2 flex-1 min-w-[200px] max-w-sm focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/15 transition-all">
                     <Search size={16} className="text-slate-400" />
-                    <input type="text" placeholder="Search client, project..." value={search} onChange={(e) => setSearch(e.target.value)} className="border-none outline-none bg-transparent text-sm text-slate-700 w-full placeholder:text-slate-400" />
+                    <input type="text" placeholder="Search client, project..." value={search} onChange={e => setSearch(e.target.value)} className="border-none outline-none bg-transparent text-sm text-slate-700 w-full placeholder:text-slate-400" />
+                </div>
+
+                {/* Status Filter */}
+                <select value={filterStatus} onChange={e => setFilterStatusAndUrl(e.target.value)} className="border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-600 outline-none bg-white cursor-pointer focus:border-blue-500">
+                    <option value="All">All Statuses</option>
+                    <option value="In Progress">In Progress</option>
+                    <option value="Completed">Completed</option>
+                    <option value="On Hold">On Hold</option>
+                </select>
+
+                {/* Date Filter */}
+                <div className="flex items-center bg-white border border-slate-200 rounded-lg overflow-hidden">
+                    {[
+                        { key: "all", label: "All Time" },
+                        { key: "today", label: "Today" },
+                        { key: "this_week", label: "This Week" },
+                        { key: "this_month", label: "This Month" },
+                    ].map(d => (
+                        <button
+                            key={d.key}
+                            onClick={() => setDateFilterAndUrl(d.key)}
+                            className={`px-3 py-2 text-xs font-medium border-none cursor-pointer transition-all ${dateFilter === d.key ? "bg-blue-500 text-white" : "bg-transparent text-slate-500 hover:bg-slate-50"}`}
+                        >
+                            {d.label}
+                        </button>
+                    ))}
                 </div>
             </div>
 
@@ -85,9 +271,10 @@ export default function Clients() {
                     <div className="flex items-center justify-center py-20">
                         <Loader2 size={28} className="animate-spin text-blue-500" />
                     </div>
-                ) : filtered.length === 0 ? (
+                ) : visibleGroups.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-20 text-slate-400">
                         <p className="text-lg font-medium">No clients found</p>
+                        <p className="text-sm mt-1">Adjust your filters or add a new client</p>
                     </div>
                 ) : (
                     <div className="overflow-x-auto">
@@ -98,102 +285,114 @@ export default function Clients() {
                                     <th className="text-xs font-semibold uppercase tracking-wider text-slate-500 py-3 px-6">Projects</th>
                                 </tr>
                             </thead>
-                            {(() => {
-                                const groupedClients = filtered.reduce((acc, client) => {
-                                    const key = client.phone || client.name;
-                                    if (!acc[key]) {
-                                        acc[key] = {
-                                            clientInfo: { name: client.name, phone: client.phone, email: client.email, company: client.company },
-                                            projects: []
-                                        };
-                                    }
-                                    acc[key].projects.push(client);
-                                    return acc;
-                                }, {});
-
-                                return Object.values(groupedClients).map((group, idx) => (
-                                    <tbody key={idx} className="border-b border-slate-200 hover:bg-slate-50/30 transition-colors">
-                                        <tr>
-                                            <td className="py-5 px-6 align-top w-1/3 border-r border-slate-200 bg-slate-50/30">
-                                                <div className="text-base font-bold text-slate-800">{group.clientInfo.name}</div>
-                                                <div className="text-sm font-medium text-slate-500 mt-1">{group.clientInfo.phone || "No Phone"}</div>
-                                                {group.clientInfo.email && <div className="text-xs text-slate-400 mt-1">{group.clientInfo.email}</div>}
-                                                {group.clientInfo.company && <div className="text-xs text-slate-400 mt-1">{group.clientInfo.company}</div>}
-                                                <button onClick={() => { setAddClientPrefill(group.clientInfo); setAddOpen(true); }} className="mt-4 flex items-center gap-1.5 text-xs font-bold text-blue-600 hover:text-blue-700 bg-blue-100/50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors cursor-pointer border-none shadow-sm">
+                            {visibleGroups.map((group, idx) => (
+                                <tbody key={idx} className="border-b border-slate-200 hover:bg-slate-50/30 transition-colors">
+                                    <tr>
+                                        <td className="py-5 px-6 align-top w-1/3 border-r border-slate-200 bg-slate-50/30">
+                                            <div className="text-base font-bold text-slate-800">{group.clientInfo.name}</div>
+                                            <div className="text-sm font-medium text-slate-500 mt-1">{group.clientInfo.phone || "No Phone"}</div>
+                                            {group.clientInfo.email && <div className="text-xs text-slate-400 mt-1">{group.clientInfo.email}</div>}
+                                            {group.clientInfo.company && <div className="text-xs text-slate-400 mt-1">{group.clientInfo.company}</div>}
+                                            <div className="mt-4 flex flex-wrap gap-2">
+                                                <button onClick={() => { setAddClientPrefill(group.clientInfo); setAddOpen(true); }} className="flex items-center gap-1.5 text-xs font-bold text-blue-600 hover:text-blue-700 bg-blue-100/50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors cursor-pointer border-none shadow-sm">
                                                     <Briefcase size={14} /> Add Project
                                                 </button>
-                                            </td>
-                                            <td className="p-0 align-top">
-                                                <table className="w-full">
-                                                    <tbody>
-                                                        {group.projects.map((client, pIdx) => {
-                                                            const paid = client.advanceReceived || 0;
-                                                            const pending = (client.projectPrice || 0) - paid;
-                                                            return (
-                                                                <tr key={client.id} className={`${pIdx !== group.projects.length - 1 ? 'border-b border-slate-100' : ''} hover:bg-white/80 transition-colors`}>
-                                                                    <td className="py-4 px-6 w-1/3">
-                                                                        <div className="text-sm font-semibold text-slate-800">{client.projectName}</div>
-                                                                    </td>
-                                                                    <td className="py-4 px-6">
-                                                                        <div className="flex flex-col gap-1.5">
-                                                                            <div className="text-xs text-slate-500 flex justify-between w-32">
-                                                                                <span>Price:</span>
-                                                                                <span className="font-semibold text-slate-700">₹{client.projectPrice?.toLocaleString() || 0}</span>
-                                                                            </div>
-                                                                            <div className="text-xs text-slate-500 flex justify-between w-32">
-                                                                                <span>Paid:</span>
-                                                                                <span className="font-semibold text-emerald-600">₹{paid.toLocaleString()}</span>
-                                                                            </div>
-                                                                            <div className="text-xs text-slate-500 flex justify-between w-32">
-                                                                                <span>Pending:</span>
-                                                                                <span className="font-semibold text-amber-600">₹{pending.toLocaleString()}</span>
-                                                                            </div>
+                                                <button onClick={() => {
+                                                    setSearchParams(prev => { prev.set("client", group.projects[0].id); return prev; });
+                                                }} className="flex items-center gap-1.5 text-xs font-bold text-slate-600 hover:text-slate-700 bg-slate-200/50 hover:bg-slate-200 px-3 py-1.5 rounded-lg transition-colors cursor-pointer border-none shadow-sm" title="View Client Logs">
+                                                    <Eye size={14} /> View Logs
+                                                </button>
+                                            </div>
+                                        </td>
+                                        <td className="p-0 align-top">
+                                            <table className="w-full">
+                                                <tbody>
+                                                    {group.projects.map((client, pIdx) => {
+                                                        const paid = client.advanceReceived || 0;
+                                                        const pending = (client.projectPrice || 0) - paid;
+                                                        return (
+                                                            <tr key={client.id} className={`${pIdx !== group.projects.length - 1 ? 'border-b border-slate-100' : ''} hover:bg-white/80 transition-colors`}>
+                                                                <td className="py-4 px-6 w-1/3">
+                                                                    <div className="text-sm font-semibold text-slate-800">{client.projectName}</div>
+                                                                </td>
+                                                                <td className="py-4 px-6">
+                                                                    <div className="flex flex-col gap-1.5">
+                                                                        <div className="text-xs text-slate-500 flex justify-between w-32">
+                                                                            <span>Price:</span>
+                                                                            <span className="font-semibold text-slate-700">₹{client.projectPrice?.toLocaleString() || 0}</span>
                                                                         </div>
-                                                                    </td>
-                                                                    <td className="py-4 px-6 w-36">
-                                                                        <select
-                                                                            value={client.status}
-                                                                            onChange={(e) => handleStatusChange(client.id, e.target.value, client.status)}
-                                                                            className={`w-full px-2 py-1.5 rounded-lg text-xs font-semibold cursor-pointer outline-none border border-slate-200 ${
-                                                                                client.status === "Completed" ? "bg-emerald-50 text-emerald-600 border-emerald-200" :
-                                                                                client.status === "On Hold" ? "bg-amber-50 text-amber-600 border-amber-200" :
-                                                                                "bg-blue-50 text-blue-600 border-blue-200"
-                                                                            }`}
-                                                                        >
-                                                                            <option value="In Progress">In Progress</option>
-                                                                            <option value="Completed">Completed</option>
-                                                                            <option value="On Hold">On Hold</option>
-                                                                        </select>
-                                                                    </td>
-                                                                    <td className="py-4 px-6 w-28 text-right">
-                                                                        <div className="flex items-center justify-end gap-1.5">
-                                                                            <button onClick={() => { setPaymentClient(client); setPaymentOpen(true); }} className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-500 bg-slate-100 border-none cursor-pointer hover:bg-emerald-100 hover:text-emerald-600 transition-all shadow-sm" title="Manage Payments">
-                                                                                <IndianRupee size={14} />
-                                                                            </button>
-                                                                            <button onClick={() => { setViewClient(client); setViewOpen(true); }} className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-500 bg-slate-100 border-none cursor-pointer hover:bg-blue-100 hover:text-blue-600 transition-all shadow-sm" title="View Logs">
-                                                                                <Eye size={14} />
-                                                                            </button>
+                                                                        <div className="text-xs text-slate-500 flex justify-between w-32">
+                                                                            <span>Paid:</span>
+                                                                            <span className="font-semibold text-emerald-600">₹{paid.toLocaleString()}</span>
                                                                         </div>
-                                                                    </td>
-                                                                </tr>
-                                                            );
-                                                        })}
-                                                    </tbody>
-                                                </table>
-                                            </td>
-                                        </tr>
-                                    </tbody>
-                                ));
-                            })()}
+                                                                        <div className="text-xs text-slate-500 flex justify-between w-32">
+                                                                            <span>Pending:</span>
+                                                                            <span className="font-semibold text-amber-600">₹{pending.toLocaleString()}</span>
+                                                                        </div>
+                                                                    </div>
+                                                                </td>
+                                                                <td className="py-4 px-6 w-36">
+                                                                    <div className="flex flex-col gap-1.5">
+                                                                        {/* Solid color badge pill */}
+                                                                        <span className={`inline-flex items-center justify-center px-2.5 py-1 rounded-full text-xs font-bold ${(projectStatusStyle[client.status] || {}).badge || "bg-slate-200 text-slate-600"}`}>
+                                                                            {client.status}
+                                                                        </span>
+                                                                        {/* Dropdown only if not completed */}
+                                                                        {client.status !== "Completed" && (
+                                                                            <select
+                                                                                value={client.status}
+                                                                                onChange={(e) => handleStatusChange(client.id, e.target.value, client.status, client)}
+                                                                                className={`w-full px-2 py-1 rounded-lg text-[10px] font-semibold outline-none border cursor-pointer ${(projectStatusStyle[client.status] || {}).select || "bg-slate-50 text-slate-600 border-slate-200"}`}
+                                                                            >
+                                                                                <option value="In Progress">In Progress</option>
+                                                                                <option value="Completed">Completed</option>
+                                                                                <option value="On Hold">On Hold</option>
+                                                                            </select>
+                                                                        )}
+                                                                    </div>
+                                                                </td>
+                                                                <td className="py-4 px-6 w-28 text-right">
+                                                                    <div className="flex items-center justify-end gap-1.5">
+                                                                        <button onClick={() => { setPaymentClient(client); setPaymentOpen(true); }} className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-500 bg-slate-100 border-none cursor-pointer hover:bg-emerald-100 hover:text-emerald-600 transition-all shadow-sm" title="Manage Payments">
+                                                                            <IndianRupee size={14} />
+                                                                        </button>
+                                                                    </div>
+                                                                </td>
+                                                            </tr>
+                                                        );
+                                                    })}
+                                                </tbody>
+                                            </table>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            ))}
                         </table>
+                    </div>
+                )}
+
+                {/* Pagination */}
+                {!loading && (
+                    <div className="flex items-center justify-between px-4 py-3 border-t border-slate-200">
+                        <p className="text-xs text-slate-400">Page {page}{totalPages > 0 ? ` of ~${totalPages}` : ""} · Showing {visibleGroups.length} client groups</p>
+                        <div className="flex items-center gap-2">
+                            <button onClick={handlePrevPage} disabled={page <= 1} className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-slate-200 text-slate-500 text-xs font-medium bg-white cursor-pointer hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-all">
+                                <ChevronLeft size={14} /> Prev
+                            </button>
+                            <button onClick={handleNextPage} disabled={!hasMore} className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-slate-200 text-slate-500 text-xs font-medium bg-white cursor-pointer hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-all">
+                                Next <ChevronRight size={14} />
+                            </button>
+                        </div>
                     </div>
                 )}
             </motion.div>
 
             {/* Modals */}
-            <ViewClientModal isOpen={viewOpen} onClose={() => setViewOpen(false)} client={viewClient} />
-            <PaymentModal isOpen={paymentOpen} onClose={() => setPaymentOpen(false)} client={paymentClient} onPaymentAdded={fetchClients} />
-            <AddClientModal isOpen={addOpen} onClose={() => setAddOpen(false)} onClientAdded={fetchClients} prefillData={addClientPrefill} />
+            <ViewClientModal isOpen={viewOpen} onClose={() => {
+                setSearchParams(prev => { prev.delete("client"); return prev; });
+            }} client={viewClient} />
+            <PaymentModal isOpen={paymentOpen} onClose={() => setPaymentOpen(false)} client={paymentClient} onPaymentAdded={refresh} />
+            <AddClientModal isOpen={addOpen} onClose={() => setAddOpen(false)} onClientAdded={refresh} prefillData={addClientPrefill} />
         </div>
     );
 }

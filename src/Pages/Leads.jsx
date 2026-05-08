@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { collection, addDoc, updateDoc, deleteDoc, doc, query, orderBy, limit, startAfter, getDocs, writeBatch, serverTimestamp, getCountFromServer } from "firebase/firestore";
+import { collection, addDoc, updateDoc, deleteDoc, doc, query, orderBy, limit, startAfter, getDocs, writeBatch, serverTimestamp, getCountFromServer, getDoc } from "firebase/firestore";
 import { db } from "../../firebase";
 import { motion, AnimatePresence } from "framer-motion";
 import { Plus, Upload, Search, Edit2, Eye, Trash2, Loader2, ChevronLeft, ChevronRight, CheckSquare, Square, X, Merge, Download, FileText, Briefcase, ChevronDown, Settings2 } from "lucide-react";
@@ -13,17 +13,16 @@ import ViewLeadModal from "../components/ViewLeadModal";
 import MergeDuplicatesModal from "../components/MergeDuplicatesModal";
 import ConvertLeadModal from "../components/ConvertLeadModal";
 import toast from "react-hot-toast";
+import { useSearchParams } from "react-router-dom";
 
 const PAGE_SIZE = 25;
 
 const statusStyle = {
-    New: "bg-blue-50 text-blue-600",
-    Contacted: "bg-purple-50 text-purple-600",
-    Qualified: "bg-indigo-50 text-indigo-600",
-    "Quotation Sent": "bg-amber-50 text-amber-600",
-    Negotiation: "bg-orange-50 text-orange-600",
-    Converted: "bg-emerald-50 text-emerald-600",
-    Lost: "bg-red-50 text-red-600",
+    New: "bg-blue-500 text-white shadow-sm shadow-blue-500/20",
+    "Follow-up": "bg-orange-500 text-white shadow-sm shadow-orange-500/20",
+    Negotiation: "bg-amber-500 text-white shadow-sm shadow-amber-500/20",
+    Converted: "bg-emerald-500 text-white shadow-sm shadow-emerald-500/20",
+    Lost: "bg-red-500 text-white shadow-sm shadow-red-500/20",
 };
 
 function getDateRange(filter) {
@@ -73,9 +72,10 @@ function mapLeadForExport(data) {
 export default function Leads() {
     const [leads, setLeads] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [searchParams, setSearchParams] = useSearchParams();
     const [search, setSearch] = useState("");
-    const [filterStatus, setFilterStatus] = useState("All");
-    const [dateFilter, setDateFilter] = useState("all");
+    const [filterStatus, setFilterStatus] = useState(() => searchParams.get("status") || "All");
+    const [dateFilter, setDateFilter] = useState(() => searchParams.get("date") || "all");
     const [totalCount, setTotalCount] = useState(0);
 
     // Pagination
@@ -107,6 +107,41 @@ export default function Leads() {
     useEffect(() => {
         getCountFromServer(collection(db, "leads")).then((snap) => setTotalCount(snap.data().count)).catch(() => { });
     }, [leads]);
+
+    const leadId = searchParams.get("lead");
+    
+    useEffect(() => {
+        if (!leadId) {
+            setViewOpen(false);
+            setViewLead(null);
+            return;
+        }
+
+        const existingLead = leads.find(l => l.id === leadId);
+        if (existingLead) {
+            setViewLead(existingLead);
+            setViewOpen(true);
+        } else {
+            const fetchLead = async () => {
+                try {
+                    const docRef = doc(db, "leads", leadId);
+                    const docSnap = await getDoc(docRef);
+                    if (docSnap.exists()) {
+                        setViewLead({ id: docSnap.id, ...docSnap.data() });
+                        setViewOpen(true);
+                    } else {
+                        setSearchParams(prev => {
+                            prev.delete("lead");
+                            return prev;
+                        }, { replace: true });
+                    }
+                } catch (error) {
+                    console.error("Failed to fetch lead:", error);
+                }
+            };
+            fetchLead();
+        }
+    }, [leadId, leads, setSearchParams]);
 
     // Fetch page
     const fetchPage = useCallback(async (afterDoc = null) => {
@@ -226,6 +261,24 @@ export default function Leads() {
             await logActivity(ref.id, "Lead created", "created");
         }
         refresh();
+    }
+
+    // Sync filters to URL
+    function setFilterStatusAndUrl(val) {
+        setFilterStatus(val);
+        setSearchParams(prev => {
+            if (val === "All") prev.delete("status");
+            else prev.set("status", val);
+            return prev;
+        }, { replace: true });
+    }
+    function setDateFilterAndUrl(val) {
+        setDateFilter(val);
+        setSearchParams(prev => {
+            if (val === "all") prev.delete("date");
+            else prev.set("date", val);
+            return prev;
+        }, { replace: true });
     }
 
     // Inline Status Change
@@ -437,7 +490,12 @@ export default function Leads() {
     // Open modals
     function openAdd() { setSelectedLead(null); setModalMode("add"); setModalOpen(true); }
     function openEdit(lead) { setSelectedLead(lead); setModalMode("edit"); setModalOpen(true); }
-    function openView(lead) { setViewLead(lead); setViewOpen(true); }
+    function openView(lead) { 
+        setSearchParams(prev => {
+            prev.set("lead", lead.id);
+            return prev;
+        });
+    }
 
     // Client-side filtering (search, status, date)
     const filtered = leads.filter((l) => {
@@ -520,7 +578,7 @@ export default function Leads() {
                 </div>
 
                 {/* Status Filter */}
-                <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-600 outline-none bg-white cursor-pointer focus:border-blue-500">
+                <select value={filterStatus} onChange={(e) => setFilterStatusAndUrl(e.target.value)} className="border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-600 outline-none bg-white cursor-pointer focus:border-blue-500">
                     {statuses.map((s) => <option key={s} value={s}>{s}</option>)}
                 </select>
 
@@ -534,7 +592,7 @@ export default function Leads() {
                     ].map((d) => (
                         <button
                             key={d.key}
-                            onClick={() => setDateFilter(d.key)}
+                            onClick={() => setDateFilterAndUrl(d.key)}
                             className={`px-3 py-2 text-xs font-medium border-none cursor-pointer transition-all ${dateFilter === d.key ? "bg-blue-500 text-white" : "bg-transparent text-slate-500 hover:bg-slate-50"}`}
                         >
                             {d.label}
@@ -664,7 +722,12 @@ export default function Leads() {
 
             {/* Modals */}
             <LeadModal isOpen={modalOpen} onClose={() => setModalOpen(false)} onSave={handleSave} lead={selectedLead} mode={modalMode} />
-            <ViewLeadModal isOpen={viewOpen} onClose={() => setViewOpen(false)} lead={viewLead} />
+            <ViewLeadModal isOpen={viewOpen} onClose={() => {
+                setSearchParams(prev => {
+                    prev.delete("lead");
+                    return prev;
+                });
+            }} lead={viewLead} />
             <BulkImportModal isOpen={bulkOpen} onClose={() => setBulkOpen(false)} onImport={handleBulkImport} />
             <MergeDuplicatesModal isOpen={mergeOpen} onClose={() => setMergeOpen(false)} onMergeComplete={refresh} />
             <ConvertLeadModal isOpen={convertOpen} onClose={() => setConvertOpen(false)} lead={leadToConvert} onConverted={refresh} />

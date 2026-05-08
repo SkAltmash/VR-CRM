@@ -66,6 +66,25 @@ export default function ConvertLeadModal({ isOpen, onClose, lead, onConverted })
                 timestamp: serverTimestamp()
             });
 
+            // 5. Log activity on the client
+            const clientKey = lead.phone || lead.name;
+            await addDoc(collection(db, "client_activity"), {
+                clientKey,
+                message: `Lead converted to Client. Initial Project: "${formData.projectName}"`,
+                type: "status_change",
+                timestamp: serverTimestamp()
+            });
+
+            // 6. Log advance payment if any
+            if (Number(formData.advanceReceived) > 0) {
+                await addDoc(collection(db, "client_activity"), {
+                    clientKey,
+                    message: `Payment received: ₹${Number(formData.advanceReceived).toLocaleString()} for project "${formData.projectName}" - Advance payment upon conversion`,
+                    type: "payment",
+                    timestamp: serverTimestamp()
+                });
+            }
+
             onConverted(); // Refresh parent
             onClose();
             toast.success("Lead successfully converted to Client");

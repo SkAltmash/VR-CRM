@@ -1,9 +1,29 @@
 import { useEffect, useMemo, useState } from "react";
-import { X, Download, MessageCircle, Loader2, FileText, Plus, Minus, Eye, Edit } from "lucide-react";
+import { X, Download, MessageCircle, Loader2, FileText, Plus, Minus, Eye, Edit, Zap } from "lucide-react";
 import { createQuotationFile, createQuotationPreviewUrl, downloadQuotationPdf } from "../utils/quotationPdf";
 import toast from "react-hot-toast";
 import { collection, getDocs, query, orderBy } from "firebase/firestore";
 import { db } from "../../firebase";
+
+// Map template name/badge to a cover image
+const QUOTATION_IMAGES = [
+    { keywords: ["hybrid"], img: "/Quotation/Hybrid-Solar-System.png" },
+    { keywords: ["off-grid", "off grid", "offgrid"], img: "/Quotation/Off-Grid.png" },
+    { keywords: ["on-grid", "on grid", "ongrid", "drawing"], img: "/Quotation/On Grid Drawing.png" },
+    { keywords: ["pump", "water pump", "solar pump"], img: "/Quotation/Solar Pump.jpg.jpeg" },
+    { keywords: ["heater", "water heater", "solar water"], img: "/Quotation/Solar Water heater.png" },
+    { keywords: ["street", "street light"], img: "/Quotation/solar street light.jpg.jpeg" },
+    { keywords: ["single line", "diagram"], img: "/Quotation/Single Line Diagram.png" },
+    { keywords: ["setup"], img: "/Quotation/Setup.png" },
+];
+
+function getTemplateImage(template) {
+    const haystack = `${template.name} ${template.badge} ${template.projectName}`.toLowerCase();
+    for (const entry of QUOTATION_IMAGES) {
+        if (entry.keywords.some(k => haystack.includes(k))) return entry.img;
+    }
+    return "/Quotation/Setup.png";
+}
 
 export default function QuotationPreviewModal({ isOpen, lead, onClose, onActivity }) {
     const [templates, setTemplates] = useState([]);
@@ -240,29 +260,58 @@ export default function QuotationPreviewModal({ isOpen, lead, onClose, onActivit
                 </div>
 
                 <div className="grid grid-cols-[220px_1fr] max-lg:grid-cols-1 flex-1 min-h-0">
-                    <aside className="border-r border-slate-200 max-lg:border-r-0 max-lg:border-b max-lg:max-h-56 overflow-y-auto p-4 bg-slate-50/60">
-                        <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3 px-1">Select Type</h3>
+                    <aside className="border-r border-slate-200 max-lg:border-r-0 max-lg:border-b max-lg:max-h-64 overflow-y-auto p-4 bg-slate-50/60">
+                        <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3 px-1">Select Template</h3>
                         {fetching ? (
                             <div className="flex justify-center py-4 text-slate-400"><Loader2 size={20} className="animate-spin" /></div>
                         ) : templates.length === 0 ? (
                             <div className="text-sm text-slate-500 text-center py-4">No templates available. Add them in Templates page.</div>
                         ) : (
-                            <div className="flex flex-col gap-2">
-                                {templates.map((type) => (
-                                    <button
-                                        key={type.id}
-                                        type="button"
-                                        onClick={() => setSelectedTypeId(type.id)}
-                                        className={`text-left rounded-lg border px-3 py-3 cursor-pointer transition-all bg-white ${selectedTypeId === type.id ? "border-blue-500 ring-2 ring-blue-500/15" : "border-slate-200 hover:border-blue-300"}`}
-                                    >
-                                        <div className="flex items-start justify-between gap-2">
-                                            <span className="text-sm font-semibold text-slate-800">{type.name}</span>
-                                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${selectedTypeId === type.id ? "bg-blue-50 text-blue-600" : "bg-slate-100 text-slate-500"}`}>
-                                                {type.badge || "Template"}
-                                            </span>
-                                        </div>
-                                    </button>
-                                ))}
+                            <div className="flex flex-col gap-3">
+                                {templates.map((type) => {
+                                    const img = getTemplateImage(type);
+                                    const isSelected = selectedTypeId === type.id;
+                                    return (
+                                        <button
+                                            key={type.id}
+                                            type="button"
+                                            onClick={() => setSelectedTypeId(type.id)}
+                                            className={`relative w-full text-left rounded-xl border-2 overflow-hidden cursor-pointer transition-all group ${
+                                                isSelected
+                                                    ? "border-blue-500 ring-2 ring-blue-500/20 shadow-md"
+                                                    : "border-slate-200 hover:border-blue-300 hover:shadow-sm"
+                                            }`}
+                                        >
+                                            {/* Cover Image */}
+                                            <div className="relative h-24 w-full overflow-hidden">
+                                                <img
+                                                    src={img}
+                                                    alt={type.name}
+                                                    className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                                                    onError={e => { e.currentTarget.src = "/Quotation/Setup.png"; }}
+                                                />
+                                                {/* Dark gradient overlay */}
+                                                <div className="absolute inset-0 bg-gradient-to-t from-slate-900/80 via-slate-900/20 to-transparent" />
+                                                {/* Badge chip */}
+                                                <span className={`absolute top-2 right-2 text-[10px] font-bold px-2 py-0.5 rounded-full backdrop-blur-sm ${
+                                                    isSelected ? "bg-blue-500 text-white" : "bg-white/80 text-slate-600"
+                                                }`}>
+                                                    {type.badge || "Template"}
+                                                </span>
+                                                {/* Selected indicator */}
+                                                {isSelected && (
+                                                    <div className="absolute top-2 left-2 w-5 h-5 rounded-full bg-blue-500 flex items-center justify-center">
+                                                        <Zap size={11} className="text-white" />
+                                                    </div>
+                                                )}
+                                                {/* Name at bottom */}
+                                                <div className="absolute bottom-0 left-0 right-0 px-2.5 pb-2">
+                                                    <p className="text-white text-xs font-bold leading-tight drop-shadow line-clamp-2">{type.name}</p>
+                                                </div>
+                                            </div>
+                                        </button>
+                                    );
+                                })}
                             </div>
                         )}
                     </aside>
@@ -423,20 +472,26 @@ export default function QuotationPreviewModal({ isOpen, lead, onClose, onActivit
                     </section>
                 </div>
 
-                <div className="px-6 py-4 border-t border-slate-200 flex items-center justify-end gap-3 shrink-0 bg-white">
+                <div className="px-6 py-4 border-t border-slate-200 flex items-center justify-between shrink-0 bg-white">
                     <button onClick={onClose} className="px-4 py-2.5 rounded-lg border border-slate-200 text-slate-600 text-sm font-medium cursor-pointer hover:bg-slate-50 bg-white transition-all">
                         Cancel
                     </button>
-                    <button onClick={handleDownload} disabled={previewLoading || action !== null || activeTab === "form"} className={`flex items-center gap-2 px-4 py-2.5 rounded-lg border border-slate-200 text-slate-600 text-sm font-semibold transition-all ${activeTab === "form" ? "opacity-50 cursor-not-allowed" : "cursor-pointer hover:bg-slate-50 bg-white disabled:opacity-60 disabled:cursor-not-allowed"}`}>
-                        {action === "download" ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />} Download PDF
-                    </button>
-                    <button onClick={handleWhatsApp} disabled={previewLoading || action !== null || activeTab === "form"} className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-white text-sm font-semibold border-none transition-all ${activeTab === "form" ? "bg-emerald-300 cursor-not-allowed" : "bg-emerald-500 cursor-pointer hover:bg-emerald-600 disabled:opacity-60 disabled:cursor-not-allowed"}`}>
-                        {action === "whatsapp" ? <Loader2 size={16} className="animate-spin" /> : <MessageCircle size={16} />} WhatsApp PDF
-                    </button>
-                    {activeTab === "form" && (
-                        <button onClick={() => setActiveTab("preview")} className="px-5 py-2.5 rounded-lg bg-blue-600 text-white text-sm font-medium cursor-pointer hover:bg-blue-700 transition-all ml-2">
-                            Review & Generate
-                        </button>
+                    {activeTab === "form" ? (
+                        <div className="flex items-center gap-3">
+                            <p className="text-xs text-slate-400">Fill in the form, then preview to download or send</p>
+                            <button onClick={() => setActiveTab("preview")} className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-gradient-to-r from-blue-500 to-purple-500 text-white text-sm font-semibold border-none cursor-pointer hover:-translate-y-0.5 hover:shadow-lg hover:shadow-blue-500/25 transition-all">
+                                <Eye size={16} /> Review &amp; Generate
+                            </button>
+                        </div>
+                    ) : (
+                        <div className="flex items-center gap-3">
+                            <button onClick={handleDownload} disabled={previewLoading || action !== null} className="flex items-center gap-2 px-4 py-2.5 rounded-lg border border-slate-200 text-slate-600 text-sm font-semibold bg-white cursor-pointer hover:bg-slate-50 disabled:opacity-60 disabled:cursor-not-allowed transition-all">
+                                {action === "download" ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />} Download PDF
+                            </button>
+                            <button onClick={handleWhatsApp} disabled={previewLoading || action !== null} className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-emerald-500 text-white text-sm font-semibold border-none cursor-pointer hover:bg-emerald-600 disabled:opacity-60 disabled:cursor-not-allowed transition-all">
+                                {action === "whatsapp" ? <Loader2 size={16} className="animate-spin" /> : <MessageCircle size={16} />} WhatsApp PDF
+                            </button>
+                        </div>
                     )}
                 </div>
             </div>

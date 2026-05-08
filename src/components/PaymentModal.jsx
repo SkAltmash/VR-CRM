@@ -52,8 +52,10 @@ export default function PaymentModal({ isOpen, onClose, client, onPaymentAdded }
             await updateDoc(doc(db, "clients", client.id), { advanceReceived: newTotal, updatedAt: serverTimestamp() });
             
             // Log activity
-            await addDoc(collection(db, "clients", client.id, "activity"), {
-                message: `Payment received: ₹${paymentAmount.toLocaleString()} - ${notes}`,
+            const clientKey = client.phone || client.name;
+            await addDoc(collection(db, "client_activity"), {
+                clientKey,
+                message: `Payment received: ₹${paymentAmount.toLocaleString()} for project "${client.projectName}" ${notes ? `- ${notes}` : ""}`,
                 type: "payment",
                 timestamp: serverTimestamp()
             });

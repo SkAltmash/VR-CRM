@@ -75,11 +75,23 @@ export default function AddClientModal({ isOpen, onClose, onClientAdded, prefill
             }
 
             // 3. Log activity on the client
-            await addDoc(collection(db, "clients", clientRef.id, "activity"), {
-                message: `Client created manually. Project: ${formData.projectName}`,
+            const clientKey = formData.phone || formData.name;
+            await addDoc(collection(db, "client_activity"), {
+                clientKey,
+                message: `Client created manually. Project: "${formData.projectName}"`,
                 type: "status_change",
                 timestamp: serverTimestamp()
             });
+
+            // 4. Log advance payment if any
+            if (Number(formData.advanceReceived) > 0) {
+                await addDoc(collection(db, "client_activity"), {
+                    clientKey,
+                    message: `Payment received: ₹${Number(formData.advanceReceived).toLocaleString()} for project "${formData.projectName}" - Advance payment upon creation`,
+                    type: "payment",
+                    timestamp: serverTimestamp()
+                });
+            }
 
             setFormData({
                 name: "", phone: "", email: "", company: "",

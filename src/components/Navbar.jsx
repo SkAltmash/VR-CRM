@@ -1,6 +1,6 @@
 import { useAuth } from "../context/auth";
 import { useNavigate, Link } from "react-router-dom";
-import { LogOut, Bell, Search, Menu, Users, Briefcase, Loader2, X } from "lucide-react";
+import { LogOut, Search, Menu, Users, Briefcase, Loader2, X } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { collection, query, where, getDocs, limit, orderBy } from "firebase/firestore";
 import { db } from "../../firebase";
@@ -126,7 +126,7 @@ export default function Navbar({ onMenuClick }) {
                                             {searchResults.leads.map(lead => (
                                                 <div 
                                                     key={lead.id} 
-                                                    onClick={() => { setShowResults(false); navigate("/leads"); }}
+                                                    onClick={() => { setShowResults(false); navigate(`/leads?lead=${lead.id}`); }}
                                                     className="flex items-center gap-3 p-2 hover:bg-slate-50 rounded-lg cursor-pointer transition-colors"
                                                 >
                                                     <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center shrink-0"><Users size={14} /></div>
@@ -144,7 +144,7 @@ export default function Navbar({ onMenuClick }) {
                                             {searchResults.clients.map(client => (
                                                 <div 
                                                     key={client.id}
-                                                    onClick={() => { setShowResults(false); navigate("/clients"); }}
+                                                    onClick={() => { setShowResults(false); navigate(`/clients?client=${client.id}`); }}
                                                     className="flex items-center gap-3 p-2 hover:bg-slate-50 rounded-lg cursor-pointer transition-colors"
                                                 >
                                                     <div className="w-8 h-8 rounded-full bg-purple-100 text-purple-600 flex items-center justify-center shrink-0"><Briefcase size={14} /></div>
@@ -165,12 +165,6 @@ export default function Navbar({ onMenuClick }) {
 
             {/* Right side */}
             <div className="flex items-center gap-3">
-                <button className="relative flex items-center justify-center w-10 h-10 border-none rounded-lg bg-transparent text-slate-400 cursor-pointer hover:bg-slate-100 hover:text-slate-700 transition-all" aria-label="Notifications">
-                    <Bell size={20} />
-                    <span className="absolute top-1.5 right-1.5 w-[18px] h-[18px] rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center leading-none">
-                        3
-                    </span>
-                </button>
 
                 <div className="relative">
                     <button

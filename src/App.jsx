@@ -31,8 +31,6 @@ function App() {
                         <Route path="/leads" element={<Leads />} />
                         <Route path="/clients" element={<Clients />} />
                         <Route path="/templates" element={<QuotationTemplates />} />
-                        <Route path="/messages" element={<DashboardHome />} />
-                        <Route path="/quotations" element={<DashboardHome />} />
                         <Route path="/settings" element={<Settings />} />
                     </Route>
 
