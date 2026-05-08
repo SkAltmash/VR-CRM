@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
-import { X, Download, MessageCircle, Loader2, FileText, Plus, Minus, Eye, Edit, Zap } from "lucide-react";
-import { createQuotationFile, createQuotationPreviewUrl, downloadQuotationPdf } from "../utils/quotationPdf";
-import toast from "react-hot-toast";
+import { X, Download, MessageCircle, Loader2, FileText, Plus, Minus, Eye, Edit, Zap, UploadCloud, CheckCircle2 } from "lucide-react";
 import { collection, getDocs, query, orderBy } from "firebase/firestore";
 import { db } from "../../firebase";
+import { createQuotationFile, createQuotationPreviewUrl, downloadQuotationPdf } from "../utils/quotationPdf";
+import toast from "react-hot-toast";
+
+const CLOUD_NAME = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
+const UPLOAD_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
 
 // Map template name/badge to a cover image
 const QUOTATION_IMAGES = [
@@ -35,6 +38,18 @@ export default function QuotationPreviewModal({ isOpen, lead, onClose, onActivit
     const [action, setAction] = useState(null);
     const [activeTab, setActiveTab] = useState("form");
     const [formTab, setFormTab] = useState("details");
+    const [uploadingImage, setUploadingImage] = useState(false);
+
+    const FORM_TABS = [
+        { id: "details",       label: "General" },
+        { id: "howItWorks",    label: "How It Works" },
+        { id: "images",        label: "Images" },
+        { id: "warrantee",     label: "Warrantee Details" },
+        { id: "specification", label: "Materials & Financials" },
+        { id: "financials",    label: "Financials" },
+        { id: "scope",         label: "Benefits & Terms" },
+        { id: "terms",         label: "Terms & Delivery" },
+    ];
 
     const selectedType = useMemo(
         () => templates.find((type) => type.id === selectedTypeId) || templates[0] || {},
@@ -225,89 +240,93 @@ export default function QuotationPreviewModal({ isOpen, lead, onClose, onActivit
         setFormData({ ...formData, [arrayName]: newArray });
     };
 
+    const handleUpload = async (file, field) => {
+        if (!file) return;
+        setUploadingImage(field);
+        try {
+            const data = new FormData();
+            data.append("file", file);
+            data.append("upload_preset", UPLOAD_PRESET);
+            data.append("cloud_name", CLOUD_NAME);
+            const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`, { method: "POST", body: data });
+            const result = await res.json();
+            if (result.secure_url) {
+                setFormData(p => ({ ...p, [field]: result.secure_url }));
+                toast.success("Image uploaded!");
+            } else throw new Error("Upload failed");
+        } catch (err) {
+            console.error(err);
+            toast.error("Failed to upload image");
+        } finally {
+            setUploadingImage(false);
+        }
+    };
+
     return (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={onClose}>
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl h-[90vh] flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
-                <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 shrink-0">
+                {/* ── Header ── */}
+                <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white shrink-0">
                     <div className="flex items-center gap-3 min-w-0">
-                        <div className="w-9 h-9 rounded-lg bg-blue-50 text-blue-500 flex items-center justify-center shrink-0">
+                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 text-white flex items-center justify-center shrink-0 shadow-md shadow-blue-500/20">
                             <FileText size={18} />
                         </div>
-                        <div className="min-w-0 flex items-center gap-4">
-                            <div>
-                                <h2 className="text-lg font-semibold text-slate-800 truncate">Quotation Generator</h2>
-                                <p className="text-xs text-slate-400 truncate">{lead.name}</p>
-                            </div>
-                            <div className="flex bg-slate-100 p-1 rounded-lg ml-4">
-                                <button
-                                    onClick={() => setActiveTab("form")}
-                                    className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${activeTab === "form" ? "bg-white text-blue-600 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}
-                                >
-                                    <div className="flex items-center gap-2"><Edit size={16}/> Edit Form</div>
-                                </button>
-                                <button
-                                    onClick={() => setActiveTab("preview")}
-                                    className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${activeTab === "preview" ? "bg-white text-blue-600 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}
-                                >
-                                    <div className="flex items-center gap-2"><Eye size={16}/> View Preview</div>
-                                </button>
-                            </div>
+                        <div className="min-w-0">
+                            <h2 className="text-base font-bold text-slate-800">Quotation Generator</h2>
+                            <p className="text-xs text-slate-400">{lead.name} &mdash; {lead.phone || "No phone"}</p>
                         </div>
                     </div>
-                    <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 border-none bg-transparent cursor-pointer">
-                        <X size={20} />
-                    </button>
+                    <div className="flex items-center gap-3">
+                        <div className="flex bg-slate-100 p-1 rounded-xl">
+                            <button onClick={() => setActiveTab("form")} className={`flex items-center gap-1.5 px-4 py-1.5 text-sm font-semibold rounded-lg transition-all ${activeTab === "form" ? "bg-white text-blue-600 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}>
+                                <Edit size={14}/> Edit
+                            </button>
+                            <button onClick={() => setActiveTab("preview")} className={`flex items-center gap-1.5 px-4 py-1.5 text-sm font-semibold rounded-lg transition-all ${activeTab === "preview" ? "bg-white text-blue-600 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}>
+                                <Eye size={14}/> Preview
+                            </button>
+                        </div>
+                        <button onClick={onClose} className="w-9 h-9 flex items-center justify-center rounded-xl text-slate-400 hover:bg-slate-100 hover:text-slate-700 border-none bg-transparent cursor-pointer transition-all">
+                            <X size={20} />
+                        </button>
+                    </div>
                 </div>
 
-                <div className="grid grid-cols-[220px_1fr] max-lg:grid-cols-1 flex-1 min-h-0">
-                    <aside className="border-r border-slate-200 max-lg:border-r-0 max-lg:border-b max-lg:max-h-64 overflow-y-auto p-4 bg-slate-50/60">
-                        <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3 px-1">Select Template</h3>
+                <div className="grid grid-cols-[180px_1fr] max-lg:grid-cols-1 flex-1 min-h-0">
+                    {/* ── Template Sidebar ── */}
+                    <aside className="border-r border-slate-100 max-lg:border-r-0 max-lg:border-b max-lg:max-h-48 overflow-y-auto p-3 bg-slate-50">
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 px-1">Templates</p>
                         {fetching ? (
-                            <div className="flex justify-center py-4 text-slate-400"><Loader2 size={20} className="animate-spin" /></div>
+                            <div className="flex justify-center py-6"><Loader2 size={18} className="animate-spin text-blue-400" /></div>
                         ) : templates.length === 0 ? (
-                            <div className="text-sm text-slate-500 text-center py-4">No templates available. Add them in Templates page.</div>
+                            <div className="text-xs text-slate-400 text-center py-4 px-1">No templates found.</div>
                         ) : (
-                            <div className="flex flex-col gap-3">
+                            <div className="flex flex-col gap-1.5">
                                 {templates.map((type) => {
                                     const img = getTemplateImage(type);
                                     const isSelected = selectedTypeId === type.id;
                                     return (
-                                        <button
-                                            key={type.id}
-                                            type="button"
-                                            onClick={() => setSelectedTypeId(type.id)}
-                                            className={`relative w-full text-left rounded-xl border-2 overflow-hidden cursor-pointer transition-all group ${
+                                        <button key={type.id} type="button" onClick={() => setSelectedTypeId(type.id)}
+                                            className={`flex items-center gap-2.5 w-full text-left rounded-lg px-2 py-1.5 cursor-pointer transition-all duration-150 ${
                                                 isSelected
-                                                    ? "border-blue-500 ring-2 ring-blue-500/20 shadow-md"
-                                                    : "border-slate-200 hover:border-blue-300 hover:shadow-sm"
+                                                    ? "bg-blue-50 ring-1 ring-blue-400"
+                                                    : "hover:bg-slate-100"
                                             }`}
                                         >
-                                            {/* Cover Image */}
-                                            <div className="relative h-24 w-full overflow-hidden">
-                                                <img
-                                                    src={img}
-                                                    alt={type.name}
-                                                    className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
-                                                    onError={e => { e.currentTarget.src = "/Quotation/Setup.png"; }}
-                                                />
-                                                {/* Dark gradient overlay */}
-                                                <div className="absolute inset-0 bg-gradient-to-t from-slate-900/80 via-slate-900/20 to-transparent" />
-                                                {/* Badge chip */}
-                                                <span className={`absolute top-2 right-2 text-[10px] font-bold px-2 py-0.5 rounded-full backdrop-blur-sm ${
-                                                    isSelected ? "bg-blue-500 text-white" : "bg-white/80 text-slate-600"
-                                                }`}>
-                                                    {type.badge || "Template"}
-                                                </span>
-                                                {/* Selected indicator */}
+                                            {/* Thumbnail */}
+                                            <div className="relative w-11 h-11 rounded-md overflow-hidden shrink-0">
+                                                <img src={img} alt={type.name} className="w-full h-full object-cover" onError={e => { e.currentTarget.src = "/Quotation/Setup.png"; }} />
                                                 {isSelected && (
-                                                    <div className="absolute top-2 left-2 w-5 h-5 rounded-full bg-blue-500 flex items-center justify-center">
-                                                        <Zap size={11} className="text-white" />
+                                                    <div className="absolute inset-0 bg-blue-500/30 flex items-center justify-center">
+                                                        <CheckCircle2 size={14} className="text-white drop-shadow" />
                                                     </div>
                                                 )}
-                                                {/* Name at bottom */}
-                                                <div className="absolute bottom-0 left-0 right-0 px-2.5 pb-2">
-                                                    <p className="text-white text-xs font-bold leading-tight drop-shadow line-clamp-2">{type.name}</p>
-                                                </div>
+                                            </div>
+                                            {/* Info */}
+                                            <div className="min-w-0">
+                                                <p className={`text-xs font-semibold leading-tight truncate ${isSelected ? "text-blue-700" : "text-slate-700"}`}>{type.name}</p>
+                                                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full mt-0.5 inline-block ${
+                                                    isSelected ? "bg-blue-100 text-blue-600" : "bg-slate-200 text-slate-500"
+                                                }`}>{type.badge || "Template"}</span>
                                             </div>
                                         </button>
                                     );
@@ -316,22 +335,22 @@ export default function QuotationPreviewModal({ isOpen, lead, onClose, onActivit
                         )}
                     </aside>
 
-                    <section className="min-h-0 flex flex-col bg-slate-50">
+                    {/* ── Main Content ── */}
+                    <section className="min-h-0 flex flex-col bg-slate-50/50">
                         {activeTab === "form" ? (
                             <div className="flex-1 flex flex-col min-h-0">
-                                <div className="border-b border-slate-200 bg-white px-4 py-2 flex gap-4 overflow-x-auto shrink-0">
-                                    {["details", "specification", "financials", "scope", "terms"].map((tab) => (
-                                        <button
-                                            key={tab}
-                                            onClick={() => setFormTab(tab)}
-                                            className={`whitespace-nowrap px-3 py-2 text-sm font-medium border-b-2 transition-all ${formTab === tab ? "border-blue-500 text-blue-600" : "border-transparent text-slate-500 hover:text-slate-700"}`}
-                                        >
-                                            {tab.toUpperCase()}
-                                        </button>
+                                {/* Sub-tab bar */}
+                                <div className="border-b border-slate-100 bg-white px-5 flex gap-1 overflow-x-auto shrink-0">
+                                    {FORM_TABS.map((tab) => (
+                                        <button key={tab.id} onClick={() => setFormTab(tab.id)}
+                                            className={`whitespace-nowrap px-3 py-3 text-[13px] font-semibold border-b-2 transition-all ${
+                                                formTab === tab.id ? "border-blue-500 text-blue-600" : "border-transparent text-slate-400 hover:text-slate-600"
+                                            }`}
+                                        >{tab.label}</button>
                                     ))}
                                 </div>
-                                <div className="flex-1 overflow-y-auto p-6">
-                                    <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
+                                <div className="flex-1 overflow-y-auto p-5">
+                                    <div className="bg-white rounded-2xl border border-slate-100 p-6 shadow-sm">
                                         {formTab === "details" && (
                                             <div className="grid grid-cols-2 gap-4">
                                                 <div className="col-span-2"><h3 className="font-semibold text-slate-800 mb-2 border-b pb-2">Project Information</h3></div>
@@ -361,6 +380,98 @@ export default function QuotationPreviewModal({ isOpen, lead, onClose, onActivit
                                                         </div>
                                                     ))}
                                                     <button onClick={() => addArrayRow("benefits", "")} className="self-start flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700 font-medium px-2 py-1"><Plus size={16}/> Add Benefit</button>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {formTab === "howItWorks" && (
+                                            <div className="flex flex-col gap-4">
+                                                <h3 className="font-semibold text-slate-800 mb-2 border-b pb-2">How It Works</h3>
+                                                <div>
+                                                    <label className="block text-xs text-slate-500 mb-1">Paragraph 1 (System Operation)</label>
+                                                    <textarea value={formData.howItWorksText1 || ""} onChange={(e) => handleFormChange(e, "howItWorksText1")} className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-blue-500 min-h-[80px]" />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-xs text-slate-500 mb-1">Paragraph 2 (Power Utilization)</label>
+                                                    <textarea value={formData.howItWorksText2 || ""} onChange={(e) => handleFormChange(e, "howItWorksText2")} className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-blue-500 min-h-[80px]" />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-xs text-slate-500 mb-1">Paragraph 3 (Testing & Handover)</label>
+                                                    <textarea value={formData.howItWorksText3 || ""} onChange={(e) => handleFormChange(e, "howItWorksText3")} className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-blue-500 min-h-[60px]" />
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {formTab === "images" && (
+                                            <div className="grid grid-cols-2 gap-8">
+                                                <div>
+                                                    <label className="block text-sm font-semibold text-slate-700 mb-2">Diagram Image</label>
+                                                    <input type="text" placeholder="Diagram Title" value={formData.diagramTitle || ""} onChange={(e) => handleFormChange(e, "diagramTitle")} className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-blue-500 mb-3" />
+                                                    <div className="border-2 border-dashed border-slate-300 rounded-xl p-4 flex flex-col items-center justify-center text-center hover:bg-slate-50 transition-colors relative h-44">
+                                                        {formData.diagramImage ? (
+                                                            <img src={formData.diagramImage} alt="Diagram" className="max-h-full max-w-full object-contain" />
+                                                        ) : (
+                                                            <><UploadCloud size={28} className="text-slate-400 mb-2" /><span className="text-sm text-slate-500">Click to upload diagram</span></>
+                                                        )}
+                                                        <input type="file" accept="image/*" onChange={(e) => handleUpload(e.target.files[0], "diagramImage")} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+                                                        {uploadingImage === "diagramImage" && <div className="absolute inset-0 bg-white/80 flex items-center justify-center rounded-xl"><Loader2 className="animate-spin text-blue-500" /></div>}
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <label className="block text-sm font-semibold text-slate-700 mb-2">Single Line Diagram</label>
+                                                    <div className="border-2 border-dashed border-slate-300 rounded-xl p-4 flex flex-col items-center justify-center text-center hover:bg-slate-50 transition-colors relative h-[244px] mt-0.5">
+                                                        {formData.singleLineImage ? (
+                                                            <img src={formData.singleLineImage} alt="Single Line" className="max-h-full max-w-full object-contain" />
+                                                        ) : (
+                                                            <><UploadCloud size={28} className="text-slate-400 mb-2" /><span className="text-sm text-slate-500">Click to upload single line diagram</span></>
+                                                        )}
+                                                        <input type="file" accept="image/*" onChange={(e) => handleUpload(e.target.files[0], "singleLineImage")} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+                                                        {uploadingImage === "singleLineImage" && <div className="absolute inset-0 bg-white/80 flex items-center justify-center rounded-xl"><Loader2 className="animate-spin text-blue-500" /></div>}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {formTab === "warrantee" && (
+                                            <div className="flex flex-col gap-4">
+                                                <h3 className="font-semibold text-slate-800 mb-2 border-b pb-2">Warrantee Details</h3>
+                                                <div>
+                                                    <label className="block text-xs text-slate-500 mb-1">Panels Warranty</label>
+                                                    <textarea value={formData.warranteePanels || ""} onChange={(e) => handleFormChange(e, "warranteePanels")} className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-blue-500 min-h-[100px]" />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-xs text-slate-500 mb-1">Performance Warranty</label>
+                                                    <textarea value={formData.warranteePerformance || ""} onChange={(e) => handleFormChange(e, "warranteePerformance")} className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-blue-500 min-h-[60px]" />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-xs text-slate-500 mb-1">Inverter / Equipment</label>
+                                                    <textarea value={formData.warranteeInverter || ""} onChange={(e) => handleFormChange(e, "warranteeInverter")} className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-blue-500 min-h-[60px]" />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-xs text-slate-500 mb-1">Balance of Systems (BOS)</label>
+                                                    <textarea value={formData.warranteeBos || ""} onChange={(e) => handleFormChange(e, "warranteeBos")} className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-blue-500 min-h-[60px]" />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-xs text-slate-500 mb-1 font-semibold">Warrantee Notes</label>
+                                                    {formData.warranteeNotes?.map((note, i) => (
+                                                        <div key={i} className="flex gap-2 mb-2">
+                                                            <input type="text" value={note} onChange={(e) => updateArrayRow("warranteeNotes", i, null, e.target.value)} className="flex-1 text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-blue-500" />
+                                                            <button onClick={() => removeArrayRow("warranteeNotes", i)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg"><Minus size={16}/></button>
+                                                        </div>
+                                                    ))}
+                                                    <button onClick={() => addArrayRow("warranteeNotes", "")} className="self-start flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700 font-medium px-2 py-1"><Plus size={16}/> Add Note</button>
+                                                </div>
+                                                <div>
+                                                    <label className="block text-sm font-semibold text-slate-700 mb-2">Warrantee Page Image (Optional)</label>
+                                                    <div className="border-2 border-dashed border-slate-300 rounded-xl p-4 flex flex-col items-center justify-center text-center hover:bg-slate-50 transition-colors relative h-36">
+                                                        {formData.warranteeImage ? (
+                                                            <img src={formData.warranteeImage} alt="Warrantee" className="max-h-full max-w-full object-contain" />
+                                                        ) : (
+                                                            <><UploadCloud size={28} className="text-slate-400 mb-2" /><span className="text-sm text-slate-500">Click to upload warrantee image</span></>
+                                                        )}
+                                                        <input type="file" accept="image/*" onChange={(e) => handleUpload(e.target.files[0], "warranteeImage")} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+                                                        {uploadingImage === "warranteeImage" && <div className="absolute inset-0 bg-white/80 flex items-center justify-center rounded-xl"><Loader2 className="animate-spin text-blue-500" /></div>}
+                                                    </div>
                                                 </div>
                                             </div>
                                         )}
@@ -472,24 +583,28 @@ export default function QuotationPreviewModal({ isOpen, lead, onClose, onActivit
                     </section>
                 </div>
 
-                <div className="px-6 py-4 border-t border-slate-200 flex items-center justify-between shrink-0 bg-white">
-                    <button onClick={onClose} className="px-4 py-2.5 rounded-lg border border-slate-200 text-slate-600 text-sm font-medium cursor-pointer hover:bg-slate-50 bg-white transition-all">
-                        Cancel
+                {/* ── Footer ── */}
+                <div className="px-6 py-3.5 border-t border-slate-100 flex items-center justify-between shrink-0 bg-white">
+                    <button onClick={onClose} className="px-4 py-2 rounded-xl border border-slate-200 text-slate-500 text-sm font-semibold cursor-pointer hover:bg-slate-50 bg-white transition-all">
+                        Close
                     </button>
                     {activeTab === "form" ? (
                         <div className="flex items-center gap-3">
-                            <p className="text-xs text-slate-400">Fill in the form, then preview to download or send</p>
-                            <button onClick={() => setActiveTab("preview")} className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-gradient-to-r from-blue-500 to-purple-500 text-white text-sm font-semibold border-none cursor-pointer hover:-translate-y-0.5 hover:shadow-lg hover:shadow-blue-500/25 transition-all">
-                                <Eye size={16} /> Review &amp; Generate
+                            <p className="text-xs text-slate-400 hidden sm:block">Fill in the form, then preview to generate</p>
+                            <button onClick={() => setActiveTab("preview")} className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-blue-500 to-purple-600 text-white text-sm font-bold border-none cursor-pointer hover:-translate-y-0.5 hover:shadow-lg hover:shadow-blue-500/30 transition-all">
+                                <Eye size={15} /> Review &amp; Generate
                             </button>
                         </div>
                     ) : (
-                        <div className="flex items-center gap-3">
-                            <button onClick={handleDownload} disabled={previewLoading || action !== null} className="flex items-center gap-2 px-4 py-2.5 rounded-lg border border-slate-200 text-slate-600 text-sm font-semibold bg-white cursor-pointer hover:bg-slate-50 disabled:opacity-60 disabled:cursor-not-allowed transition-all">
-                                {action === "download" ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />} Download PDF
+                        <div className="flex items-center gap-2">
+                            <button onClick={() => setActiveTab("form")} className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-slate-200 text-slate-500 text-sm font-semibold bg-white cursor-pointer hover:bg-slate-50 transition-all">
+                                <Edit size={14} /> Edit
                             </button>
-                            <button onClick={handleWhatsApp} disabled={previewLoading || action !== null} className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-emerald-500 text-white text-sm font-semibold border-none cursor-pointer hover:bg-emerald-600 disabled:opacity-60 disabled:cursor-not-allowed transition-all">
-                                {action === "whatsapp" ? <Loader2 size={16} className="animate-spin" /> : <MessageCircle size={16} />} WhatsApp PDF
+                            <button onClick={handleDownload} disabled={previewLoading || action !== null} className="flex items-center gap-1.5 px-4 py-2 rounded-xl border border-slate-200 text-slate-700 text-sm font-semibold bg-white cursor-pointer hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all">
+                                {action === "download" ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />} Download PDF
+                            </button>
+                            <button onClick={handleWhatsApp} disabled={previewLoading || action !== null} className="flex items-center gap-1.5 px-5 py-2 rounded-xl bg-emerald-500 text-white text-sm font-bold border-none cursor-pointer hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed shadow-md shadow-emerald-500/20 hover:-translate-y-0.5 transition-all">
+                                {action === "whatsapp" ? <Loader2 size={15} className="animate-spin" /> : <MessageCircle size={15} />} WhatsApp
                             </button>
                         </div>
                     )}
