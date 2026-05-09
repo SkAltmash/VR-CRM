@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, CheckCircle, Loader2, IndianRupee, Briefcase, FileText } from "lucide-react";
-import { collection, addDoc, updateDoc, doc, serverTimestamp } from "firebase/firestore";
+import { collection, writeBatch, doc, serverTimestamp } from "firebase/firestore";
 import { db } from "../../firebase";
 import toast from "react-hot-toast";
 
@@ -22,8 +22,24 @@ export default function ConvertLeadModal({ isOpen, onClose, lead, onConverted })
         e.preventDefault();
         setLoading(true);
 
+        const projectPriceNum = Number(formData.projectPrice) || 0;
+        const advanceReceivedNum = Number(formData.advanceReceived) || 0;
+
+        if (projectPriceNum < 0 || advanceReceivedNum < 0) {
+            toast.error("Values cannot be negative.");
+            setLoading(false);
+            return;
+        }
+        if (advanceReceivedNum > projectPriceNum) {
+            toast.error("Advance cannot be greater than the project price.");
+            setLoading(false);
+            return;
+        }
+
         try {
-            // 1. Create a client entry in "clients" collection
+            const batch = writeBatch(db);
+            const clientRef = doc(collection(db, "clients"));
+
             const clientData = {
                 leadId: lead.id,
                 name: lead.name || "",
@@ -31,20 +47,20 @@ export default function ConvertLeadModal({ isOpen, onClose, lead, onConverted })
                 email: lead.email || "",
                 company: lead.company || "",
                 projectName: formData.projectName,
-                projectPrice: Number(formData.projectPrice) || 0,
-                advanceReceived: Number(formData.advanceReceived) || 0,
+                projectPrice: projectPriceNum,
+                advanceReceived: advanceReceivedNum,
                 notes: formData.notes,
-                status: "In Progress", // Default project status
+                status: "In Progress",
                 createdAt: serverTimestamp(),
                 updatedAt: serverTimestamp(),
             };
 
-            const clientRef = await addDoc(collection(db, "clients"), clientData);
+            batch.set(clientRef, clientData);
 
-            // 2. Add the advance payment to the client's "payments" subcollection if any
-            if (Number(formData.advanceReceived) > 0) {
-                await addDoc(collection(db, "clients", clientRef.id, "payments"), {
-                    amount: Number(formData.advanceReceived),
+            if (advanceReceivedNum > 0) {
+                const paymentRef = doc(collection(db, "clients", clientRef.id, "payments"));
+                batch.set(paymentRef, {
+                    amount: advanceReceivedNum,
                     date: serverTimestamp(),
                     mode: "Advance",
                     notes: "Advance payment received upon conversion",
@@ -52,38 +68,40 @@ export default function ConvertLeadModal({ isOpen, onClose, lead, onConverted })
                 });
             }
 
-            // 3. Update the lead's status to "Converted" and link clientId
-            await updateDoc(doc(db, "leads", lead.id), {
+            const leadRef = doc(db, "leads", lead.id);
+            batch.update(leadRef, {
                 status: "Converted",
                 clientId: clientRef.id,
                 updatedAt: serverTimestamp()
             });
 
-            // 4. Log activity on the lead
-            await addDoc(collection(db, "leads", lead.id, "activity"), {
+            const leadActivityRef = doc(collection(db, "leads", lead.id, "activity"));
+            batch.set(leadActivityRef, {
                 message: `Lead converted to Client. Project: ${formData.projectName}`,
                 type: "status_change",
                 timestamp: serverTimestamp()
             });
 
-            // 5. Log activity on the client
             const clientKey = lead.phone || lead.name;
-            await addDoc(collection(db, "client_activity"), {
+            const clientActivityRef1 = doc(collection(db, "client_activity"));
+            batch.set(clientActivityRef1, {
                 clientKey,
                 message: `Lead converted to Client. Initial Project: "${formData.projectName}"`,
                 type: "status_change",
                 timestamp: serverTimestamp()
             });
 
-            // 6. Log advance payment if any
-            if (Number(formData.advanceReceived) > 0) {
-                await addDoc(collection(db, "client_activity"), {
+            if (advanceReceivedNum > 0) {
+                const clientActivityRef2 = doc(collection(db, "client_activity"));
+                batch.set(clientActivityRef2, {
                     clientKey,
-                    message: `Payment received: ₹${Number(formData.advanceReceived).toLocaleString()} for project "${formData.projectName}" - Advance payment upon conversion`,
+                    message: `Payment received: ₹${advanceReceivedNum.toLocaleString()} for project "${formData.projectName}" - Advance payment upon conversion`,
                     type: "payment",
                     timestamp: serverTimestamp()
                 });
             }
+
+            await batch.commit();
 
             onConverted(); // Refresh parent
             onClose();

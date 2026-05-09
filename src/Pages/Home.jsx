@@ -1,7 +1,7 @@
 import { Users, TrendingUp, UserPlus, Briefcase, FileSignature, ArrowRight, Activity, Clock, IndianRupee, Wrench, BarChart2 } from "lucide-react";
 import { motion } from "framer-motion";
 import { useState, useEffect } from "react";
-import { collection, query, where, orderBy, limit, getDocs, getCountFromServer } from "firebase/firestore";
+import { collection, query, where, orderBy, limit, getDocs, getCountFromServer, collectionGroup } from "firebase/firestore";
 import { db } from "../../firebase";
 import { Link } from "react-router-dom";
 import {
@@ -157,19 +157,25 @@ export default function DashboardHome() {
                 setRecentLeads(recentSnap.docs.map(d => ({ id: d.id, ...d.data() })));
                 setLoading(false);
 
-                // --- Revenue: fetch last 6 months of clients (limited reads) ---
+                // --- Calculate Pending Payments ---
+                const allClientsSnap = await getDocs(clientsRef);
+                let totalPendingPayments = 0;
+                allClientsSnap.docs.forEach(doc => {
+                    const data = doc.data();
+                    if (data.status !== "Completed" && data.status !== "Lost") {
+                        const paid = Number(data.advanceReceived) || 0;
+                        const price = Number(data.projectPrice) || 0;
+                        const pending = price - paid;
+                        if (pending > 0) totalPendingPayments += pending;
+                    }
+                });
+
+                // --- Calculate Monthly Revenue ---
                 const sixMonthsAgo = new Date();
                 sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 5);
                 sixMonthsAgo.setDate(1);
                 sixMonthsAgo.setHours(0, 0, 0, 0);
 
-                const revenueSnap = await getDocs(
-                    query(clientsRef, where("createdAt", ">=", sixMonthsAgo), orderBy("createdAt", "asc"), limit(200))
-                );
-
-                if (!isMounted) return;
-
-                // Build monthly buckets
                 const months = [];
                 for (let i = 5; i >= 0; i--) {
                     const d = new Date();
@@ -182,22 +188,23 @@ export default function DashboardHome() {
                     });
                 }
 
-                let totalPendingPayments = 0;
                 let currentMonthRevenue = 0;
                 const now = new Date();
-
-                revenueSnap.docs.forEach(doc => {
+                const paymentsSnap = await getDocs(collectionGroup(db, "payments"));
+                
+                paymentsSnap.docs.forEach(doc => {
                     const data = doc.data();
-                    const paid = Number(data.advanceReceived) || 0;
-                    const price = Number(data.projectPrice) || 0;
-                    const pending = price - paid;
-                    if (pending > 0) totalPendingPayments += pending;
-
-                    const created = data.createdAt?.toDate ? data.createdAt.toDate() : new Date(data.createdAt?.seconds * 1000);
-                    const bucket = months.find(m => m.monthNum === created.getMonth() && m.year === created.getFullYear());
-                    if (bucket) bucket.revenue += paid;
-                    if (created.getMonth() === now.getMonth() && created.getFullYear() === now.getFullYear()) {
-                        currentMonthRevenue += paid;
+                    if (!data.date) return;
+                    
+                    const created = data.date?.toDate ? data.date.toDate() : new Date(data.date?.seconds * 1000);
+                    
+                    if (created >= sixMonthsAgo) {
+                        const paid = Number(data.amount) || 0;
+                        const bucket = months.find(m => m.monthNum === created.getMonth() && m.year === created.getFullYear());
+                        if (bucket) bucket.revenue += paid;
+                        if (created.getMonth() === now.getMonth() && created.getFullYear() === now.getFullYear()) {
+                            currentMonthRevenue += paid;
+                        }
                     }
                 });
 

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { collection, query, orderBy, getDocs, updateDoc, doc, serverTimestamp, addDoc, limit, startAfter, getCountFromServer, getDoc } from "firebase/firestore";
+import { collection, query, orderBy, getDocs, updateDoc, doc, serverTimestamp, addDoc, getCountFromServer, getDoc } from "firebase/firestore";
 import { db } from "../../firebase";
 import { motion } from "framer-motion";
 import { Loader2, Search, Eye, IndianRupee, Plus, Briefcase, ChevronLeft, ChevronRight } from "lucide-react";
@@ -44,10 +44,6 @@ export default function Clients() {
     const [dateFilter, setDateFilter] = useState(() => searchParams.get("date") || "all");
     const [totalCount, setTotalCount] = useState(0);
     const [page, setPage] = useState(1);
-    const [pageSnapshots, setPageSnapshots] = useState([]);
-    const [lastDoc, setLastDoc] = useState(null);
-    const [firstDoc, setFirstDoc] = useState(null);
-    const [hasMore, setHasMore] = useState(false);
 
     // Modals
     const [viewOpen, setViewOpen] = useState(false);
@@ -64,21 +60,13 @@ export default function Clients() {
             .catch(() => {});
     }, [clients]);
 
-    const fetchPage = useCallback(async (afterDoc = null) => {
+    const fetchAllData = useCallback(async () => {
         setLoading(true);
         try {
-            let q;
-            if (afterDoc) {
-                q = query(collection(db, "clients"), orderBy("createdAt", "desc"), startAfter(afterDoc), limit(PAGE_SIZE));
-            } else {
-                q = query(collection(db, "clients"), orderBy("createdAt", "desc"), limit(PAGE_SIZE));
-            }
+            const q = query(collection(db, "clients"), orderBy("createdAt", "desc"));
             const snap = await getDocs(q);
             const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
             setClients(data);
-            setFirstDoc(snap.docs[0] || null);
-            setLastDoc(snap.docs[snap.docs.length - 1] || null);
-            setHasMore(snap.docs.length === PAGE_SIZE);
         } catch (err) {
             console.error("Failed to fetch clients:", err);
         } finally {
@@ -86,46 +74,19 @@ export default function Clients() {
         }
     }, []);
 
-    useEffect(() => { fetchPage(); }, [fetchPage]);
+    useEffect(() => { fetchAllData(); }, [fetchAllData]);
 
     function refresh() {
         setPage(1);
-        setPageSnapshots([]);
-        fetchPage();
+        fetchAllData();
     }
 
     function handleNextPage() {
-        if (!lastDoc || !hasMore) return;
-        setPageSnapshots(prev => [...prev, firstDoc]);
         setPage(p => p + 1);
-        fetchPage(lastDoc);
     }
 
     function handlePrevPage() {
-        if (page <= 1) return;
-        const prevSnapshots = [...pageSnapshots];
-        prevSnapshots.pop();
-        setPageSnapshots(prevSnapshots);
-        setPage(p => p - 1);
-        if (prevSnapshots.length === 0) {
-            fetchPage();
-        } else {
-            const cursor = prevSnapshots[prevSnapshots.length - 1];
-            if (cursor) {
-                const doFetch = async () => {
-                    setLoading(true);
-                    try {
-                        const q = query(collection(db, "clients"), orderBy("createdAt", "desc"), startAfter(cursor), limit(PAGE_SIZE));
-                        const snap = await getDocs(q);
-                        setClients(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-                        setFirstDoc(snap.docs[0] || null);
-                        setLastDoc(snap.docs[snap.docs.length - 1] || null);
-                        setHasMore(snap.docs.length === PAGE_SIZE);
-                    } finally { setLoading(false); }
-                };
-                doFetch();
-            }
-        }
+        setPage(p => Math.max(1, p - 1));
     }
 
     const clientId = searchParams.get("client");
@@ -211,9 +172,10 @@ export default function Clients() {
     }, {});
 
     // Hide client groups that have no projects after filtering
-    const visibleGroups = Object.values(groupedClients).filter(g => g.projects.length > 0);
+    const allVisibleGroups = Object.values(groupedClients).filter(g => g.projects.length > 0);
 
-    const totalPages = Math.ceil(totalCount / PAGE_SIZE);
+    const totalPages = Math.ceil(allVisibleGroups.length / PAGE_SIZE);
+    const visibleGroups = allVisibleGroups.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
     return (
         <div className="max-w-6xl mx-auto">
@@ -379,7 +341,7 @@ export default function Clients() {
                             <button onClick={handlePrevPage} disabled={page <= 1} className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-slate-200 text-slate-500 text-xs font-medium bg-white cursor-pointer hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-all">
                                 <ChevronLeft size={14} /> Prev
                             </button>
-                            <button onClick={handleNextPage} disabled={!hasMore} className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-slate-200 text-slate-500 text-xs font-medium bg-white cursor-pointer hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-all">
+                            <button onClick={handleNextPage} disabled={page >= totalPages} className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-slate-200 text-slate-500 text-xs font-medium bg-white cursor-pointer hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-all">
                                 Next <ChevronRight size={14} />
                             </button>
                         </div>

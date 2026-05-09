@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, CheckCircle, Loader2, IndianRupee, Briefcase, FileText, User, Phone, Mail, Building } from "lucide-react";
-import { collection, addDoc, serverTimestamp } from "firebase/firestore";
+import { collection, writeBatch, doc, serverTimestamp } from "firebase/firestore";
 import { db } from "../../firebase";
 import toast from "react-hot-toast";
 
@@ -45,28 +45,44 @@ export default function AddClientModal({ isOpen, onClose, onClientAdded, prefill
         e.preventDefault();
         setLoading(true);
 
+        const projectPriceNum = Number(formData.projectPrice) || 0;
+        const advanceReceivedNum = Number(formData.advanceReceived) || 0;
+
+        if (projectPriceNum < 0 || advanceReceivedNum < 0) {
+            toast.error("Values cannot be negative.");
+            setLoading(false);
+            return;
+        }
+        if (advanceReceivedNum > projectPriceNum) {
+            toast.error("Advance cannot be greater than the project price.");
+            setLoading(false);
+            return;
+        }
+
         try {
-            // 1. Create a client entry in "clients" collection
+            const batch = writeBatch(db);
+            const clientRef = doc(collection(db, "clients"));
+
             const clientData = {
                 name: formData.name,
                 phone: formData.phone,
                 email: formData.email,
                 company: formData.company,
                 projectName: formData.projectName,
-                projectPrice: Number(formData.projectPrice) || 0,
-                advanceReceived: Number(formData.advanceReceived) || 0,
+                projectPrice: projectPriceNum,
+                advanceReceived: advanceReceivedNum,
                 notes: formData.notes,
-                status: "In Progress", // Default project status
+                status: "In Progress",
                 createdAt: serverTimestamp(),
                 updatedAt: serverTimestamp(),
             };
 
-            const clientRef = await addDoc(collection(db, "clients"), clientData);
+            batch.set(clientRef, clientData);
 
-            // 2. Add the advance payment to the client's "payments" subcollection if any
-            if (Number(formData.advanceReceived) > 0) {
-                await addDoc(collection(db, "clients", clientRef.id, "payments"), {
-                    amount: Number(formData.advanceReceived),
+            if (advanceReceivedNum > 0) {
+                const paymentRef = doc(collection(db, "clients", clientRef.id, "payments"));
+                batch.set(paymentRef, {
+                    amount: advanceReceivedNum,
                     date: serverTimestamp(),
                     mode: "Advance",
                     notes: "Advance payment received upon creation",
@@ -74,24 +90,26 @@ export default function AddClientModal({ isOpen, onClose, onClientAdded, prefill
                 });
             }
 
-            // 3. Log activity on the client
             const clientKey = formData.phone || formData.name;
-            await addDoc(collection(db, "client_activity"), {
+            const activityRef1 = doc(collection(db, "client_activity"));
+            batch.set(activityRef1, {
                 clientKey,
                 message: `Client created manually. Project: "${formData.projectName}"`,
                 type: "status_change",
                 timestamp: serverTimestamp()
             });
 
-            // 4. Log advance payment if any
-            if (Number(formData.advanceReceived) > 0) {
-                await addDoc(collection(db, "client_activity"), {
+            if (advanceReceivedNum > 0) {
+                const activityRef2 = doc(collection(db, "client_activity"));
+                batch.set(activityRef2, {
                     clientKey,
-                    message: `Payment received: ₹${Number(formData.advanceReceived).toLocaleString()} for project "${formData.projectName}" - Advance payment upon creation`,
+                    message: `Payment received: ₹${advanceReceivedNum.toLocaleString()} for project "${formData.projectName}" - Advance payment upon creation`,
                     type: "payment",
                     timestamp: serverTimestamp()
                 });
             }
+
+            await batch.commit();
 
             setFormData({
                 name: "", phone: "", email: "", company: "",

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp } from "firebase/firestore";
+import { collection, query, orderBy, onSnapshot, serverTimestamp, runTransaction, doc } from "firebase/firestore";
 import { db } from "../../firebase";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, CheckCircle, Loader2, IndianRupee } from "lucide-react";
@@ -39,25 +39,43 @@ export default function PaymentModal({ isOpen, onClose, client, onPaymentAdded }
 
         setAdding(true);
         try {
-            await addDoc(collection(db, "clients", client.id, "payments"), {
-                amount: paymentAmount,
-                date: serverTimestamp(),
-                mode: "Manual",
-                notes: notes,
-                createdAt: serverTimestamp()
-            });
-            // Update total advance/paid on client document
-            const newTotal = (client.advanceReceived || 0) + paymentAmount;
-            const { updateDoc, doc } = await import("firebase/firestore");
-            await updateDoc(doc(db, "clients", client.id), { advanceReceived: newTotal, updatedAt: serverTimestamp() });
-            
-            // Log activity
-            const clientKey = client.phone || client.name;
-            await addDoc(collection(db, "client_activity"), {
-                clientKey,
-                message: `Payment received: ₹${paymentAmount.toLocaleString()} for project "${client.projectName}" ${notes ? `- ${notes}` : ""}`,
-                type: "payment",
-                timestamp: serverTimestamp()
+            const clientRef = doc(db, "clients", client.id);
+            await runTransaction(db, async (transaction) => {
+                const clientDoc = await transaction.get(clientRef);
+                if (!clientDoc.exists()) {
+                    throw new Error("Client does not exist!");
+                }
+
+                const currentAdvance = clientDoc.data().advanceReceived || 0;
+                const newTotal = currentAdvance + paymentAmount;
+                const projectPrice = clientDoc.data().projectPrice || 0;
+
+                if (newTotal > projectPrice) {
+                    throw new Error(`Payment exceeds project price. Pending amount is ₹${(projectPrice - currentAdvance).toLocaleString()}`);
+                }
+
+                transaction.update(clientRef, {
+                    advanceReceived: newTotal,
+                    updatedAt: serverTimestamp()
+                });
+
+                const paymentRef = doc(collection(db, "clients", client.id, "payments"));
+                transaction.set(paymentRef, {
+                    amount: paymentAmount,
+                    date: serverTimestamp(),
+                    mode: "Manual",
+                    notes: notes,
+                    createdAt: serverTimestamp()
+                });
+
+                const activityRef = doc(collection(db, "client_activity"));
+                const clientKey = clientDoc.data().phone || clientDoc.data().name;
+                transaction.set(activityRef, {
+                    clientKey,
+                    message: `Payment received: ₹${paymentAmount.toLocaleString()} for project "${clientDoc.data().projectName}" ${notes ? `- ${notes}` : ""}`,
+                    type: "payment",
+                    timestamp: serverTimestamp()
+                });
             });
 
             setAmount("");

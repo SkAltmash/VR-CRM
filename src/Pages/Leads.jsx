@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { collection, addDoc, updateDoc, deleteDoc, doc, query, orderBy, limit, startAfter, getDocs, writeBatch, serverTimestamp, getCountFromServer, getDoc, where } from "firebase/firestore";
+import { collection, addDoc, updateDoc, deleteDoc, doc, query, orderBy, getDocs, writeBatch, serverTimestamp, getCountFromServer, getDoc, where } from "firebase/firestore";
 import { db } from "../../firebase";
 import { motion, AnimatePresence } from "framer-motion";
 import { Plus, Upload, Search, Edit2, Eye, Trash2, Loader2, ChevronLeft, ChevronRight, CheckSquare, Square, X, Merge, Download, FileText, Briefcase, ChevronDown, Settings2, Pin, PinOff } from "lucide-react";
@@ -79,12 +79,7 @@ export default function Leads() {
     const [dateFilter, setDateFilter] = useState(() => searchParams.get("date") || "all");
     const [totalCount, setTotalCount] = useState(0);
 
-    // Pagination
-    const [lastDoc, setLastDoc] = useState(null);
-    const [firstDoc, setFirstDoc] = useState(null);
     const [page, setPage] = useState(1);
-    const [hasMore, setHasMore] = useState(false);
-    const [pageSnapshots, setPageSnapshots] = useState([]);
 
     // Modals
     const [modalOpen, setModalOpen] = useState(false);
@@ -190,22 +185,14 @@ export default function Leads() {
         }
     }, [leadId, leads, setSearchParams]);
 
-    // Fetch page
-    const fetchPage = useCallback(async (afterDoc = null) => {
+    // Fetch all data
+    const fetchAllData = useCallback(async () => {
         setLoading(true);
         try {
-            let q;
-            if (afterDoc) {
-                q = query(collection(db, "leads"), orderBy("createdAt", "desc"), startAfter(afterDoc), limit(PAGE_SIZE));
-            } else {
-                q = query(collection(db, "leads"), orderBy("createdAt", "desc"), limit(PAGE_SIZE));
-            }
+            const q = query(collection(db, "leads"), orderBy("createdAt", "desc"));
             const snap = await getDocs(q);
             const data = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
             setLeads(data);
-            setFirstDoc(snap.docs[0] || null);
-            setLastDoc(snap.docs[snap.docs.length - 1] || null);
-            setHasMore(snap.docs.length === PAGE_SIZE);
         } catch (err) {
             console.error("Failed to fetch leads:", err);
         } finally {
@@ -214,65 +201,26 @@ export default function Leads() {
     }, []);
 
     useEffect(() => {
-        fetchPage();
-    }, [fetchPage]);
+        fetchAllData();
+    }, [fetchAllData]);
 
     // Next page
     function handleNextPage() {
-        if (!lastDoc || !hasMore) return;
-        setPageSnapshots((prev) => [...prev, firstDoc]);
         setPage((p) => p + 1);
-        fetchPage(lastDoc);
     }
 
     // Prev page
     function handlePrevPage() {
         if (page <= 1) return;
-        const prevSnapshots = [...pageSnapshots];
-        const prevFirst = prevSnapshots.pop();
-        setPageSnapshots(prevSnapshots);
         setPage((p) => p - 1);
-        if (prevFirst) {
-            // Go back to previous page by fetching from the snapshot before it
-            // Simplest approach: refetch from that cursor
-            fetchPageFromStart(prevSnapshots.length);
-        } else {
-            fetchPage();
-        }
-    }
-
-    async function fetchPageFromStart(pageIndex) {
-        setLoading(true);
-        try {
-            // Fetch pageIndex * PAGE_SIZE + PAGE_SIZE docs, take the last PAGE_SIZE
-            // Simpler: just refetch page 1 if going back to start
-            if (pageIndex === 0) {
-                await fetchPage();
-                return;
-            }
-            // For going back we stored the firstDoc of each page
-            const cursor = pageSnapshots[pageIndex - 1];
-            if (cursor) {
-                const q = query(collection(db, "leads"), orderBy("createdAt", "desc"), startAfter(cursor), limit(PAGE_SIZE));
-                const snap = await getDocs(q);
-                const data = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-                setLeads(data);
-                setFirstDoc(snap.docs[0] || null);
-                setLastDoc(snap.docs[snap.docs.length - 1] || null);
-                setHasMore(snap.docs.length === PAGE_SIZE);
-            }
-        } finally {
-            setLoading(false);
-        }
     }
 
     // Refresh current page
     function refresh() {
         setPage(1);
-        setPageSnapshots([]);
         setSelected(new Set());
         fetchPinnedLeads();
-        fetchPage();
+        fetchAllData();
     }
 
     // Activity log helper
@@ -564,10 +512,12 @@ export default function Leads() {
 
     const filteredPinned = filterLeadsArray(pinnedLeads);
     const filteredPaginated = filterLeadsArray(leads).filter(l => !pinnedLeads.find(p => p.id === l.id));
-    const filtered = [...filteredPinned, ...filteredPaginated];
+    const filteredTotal = [...filteredPinned, ...filteredPaginated];
+    
+    const filtered = filteredTotal.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
     const statuses = ["All", ...Object.keys(statusStyle)];
-    const totalPages = Math.ceil(totalCount / PAGE_SIZE);
+    const totalPages = Math.ceil(filteredTotal.length / PAGE_SIZE);
 
     // Keyboard navigation — placed after filtered is computed
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -798,7 +748,7 @@ export default function Leads() {
                             <button onClick={handlePrevPage} disabled={page <= 1} className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-slate-200 text-slate-500 text-xs font-medium bg-white cursor-pointer hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-all">
                                 <ChevronLeft size={14} /> Prev
                             </button>
-                            <button onClick={handleNextPage} disabled={!hasMore} className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-slate-200 text-slate-500 text-xs font-medium bg-white cursor-pointer hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-all">
+                            <button onClick={handleNextPage} disabled={page >= totalPages} className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-slate-200 text-slate-500 text-xs font-medium bg-white cursor-pointer hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-all">
                                 Next <ChevronRight size={14} />
                             </button>
                         </div>

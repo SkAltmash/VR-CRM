@@ -9,7 +9,7 @@ export default function Navbar({ onMenuClick }) {
     const { currentUser, logout } = useAuth();
     const navigate = useNavigate();
     const [showDropdown, setShowDropdown] = useState(false);
-    
+
     // Search State
     const [searchQuery, setSearchQuery] = useState("");
     const [searchResults, setSearchResults] = useState({ leads: [], clients: [], templates: [] });
@@ -41,13 +41,13 @@ export default function Navbar({ onMenuClick }) {
                 // we'll fetch recently updated leads/clients and filter them in memory
                 // or use a simple prefix query if we only care about exact starts.
                 // We'll just fetch the top 50 active leads and clients to search against them for simplicity and cost.
-                
-                const leadsSnap = await getDocs(query(collection(db, "leads"), orderBy("updatedAt", "desc"), limit(100)));
-                const clientsSnap = await getDocs(query(collection(db, "clients"), orderBy("updatedAt", "desc"), limit(100)));
+
+                const leadsSnap = await getDocs(query(collection(db, "leads"), orderBy("createdAt", "desc"), limit(100)));
+                const clientsSnap = await getDocs(query(collection(db, "clients"), orderBy("createdAt", "desc"), limit(100)));
                 const templatesSnap = await getDocs(query(collection(db, "quotationTemplates"), orderBy("createdAt", "desc"), limit(100)));
-                
+
                 const queryLower = searchQuery.toLowerCase();
-                
+
                 const filteredLeads = leadsSnap.docs
                     .map(d => ({ id: d.id, ...d.data() }))
                     .filter(l => l.name?.toLowerCase().includes(queryLower) || l.phone?.includes(queryLower))
@@ -93,12 +93,12 @@ export default function Navbar({ onMenuClick }) {
             {/* Left side */}
             <div className="flex items-center gap-4 flex-1">
                 <button
-                    className="flex items-center justify-center w-9 h-9 border-none rounded-lg bg-transparent text-slate-400 cursor-pointer hover:bg-slate-100 hover:text-slate-700 transition-all"
                     onClick={onMenuClick}
-                    aria-label="Toggle menu"
+                    className="md:hidden p-2 -ml-2 text-slate-500 hover:bg-slate-100 rounded-lg transition-colors"
                 >
-                    <Menu size={22} />
+                    <Menu size={24} />
                 </button>
+
                 <div ref={searchRef} className="relative flex items-center gap-2.5 bg-slate-100/70 hover:bg-slate-100 border border-transparent rounded-xl px-4 py-2 max-w-md w-full focus-within:bg-white focus-within:border-blue-500 focus-within:ring-4 focus-within:ring-blue-500/10 transition-all duration-200 max-md:hidden group">
                     <Search size={18} className="text-slate-400 group-focus-within:text-blue-500 shrink-0 transition-colors" />
                     <input
@@ -109,7 +109,7 @@ export default function Navbar({ onMenuClick }) {
                             setSearchQuery(e.target.value);
                             setShowResults(true);
                         }}
-                        onFocus={() => { if(searchQuery) setShowResults(true); }}
+                        onFocus={() => { if (searchQuery) setShowResults(true); }}
                         className="border-none outline-none bg-transparent text-slate-700 font-medium text-sm w-full placeholder:text-slate-400 placeholder:font-normal"
                     />
                     {isSearching ? (
@@ -141,8 +141,8 @@ export default function Navbar({ onMenuClick }) {
                                         <div>
                                             <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 px-2 mt-1">Leads</h4>
                                             {searchResults.leads.map(lead => (
-                                                <div 
-                                                    key={lead.id} 
+                                                <div
+                                                    key={lead.id}
                                                     onClick={() => { setShowResults(false); navigate(`/leads?lead=${lead.id}`); }}
                                                     className="flex items-center gap-3 p-2 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors group/item"
                                                 >
@@ -160,7 +160,7 @@ export default function Navbar({ onMenuClick }) {
                                             {searchResults.leads.length > 0 && <div className="h-px bg-slate-100 mx-2 my-2" />}
                                             <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 px-2 mt-1">Clients</h4>
                                             {searchResults.clients.map(client => (
-                                                <div 
+                                                <div
                                                     key={client.id}
                                                     onClick={() => { setShowResults(false); navigate(`/clients?client=${client.id}`); }}
                                                     className="flex items-center gap-3 p-2 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors group/item"
@@ -179,7 +179,7 @@ export default function Navbar({ onMenuClick }) {
                                             {(searchResults.leads.length > 0 || searchResults.clients.length > 0) && <div className="h-px bg-slate-100 mx-2 my-2" />}
                                             <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 px-2 mt-1">Quotation Templates</h4>
                                             {searchResults.templates.map(template => (
-                                                <div 
+                                                <div
                                                     key={template.id}
                                                     onClick={() => { setShowResults(false); navigate(`/templates`); }}
                                                     className="flex items-center gap-3 p-2 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors group/item"

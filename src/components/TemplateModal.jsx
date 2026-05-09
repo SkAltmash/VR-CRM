@@ -108,8 +108,8 @@ export default function TemplateModal({ isOpen, onClose, template, onSave }) {
         try {
             const payload = {
                 ...formData,
-                materialRows: JSON.stringify(formData.materialRows || []),
-                financialRows: JSON.stringify(formData.financialRows || []),
+                materialRows: formData.materialRows || [],
+                financialRows: formData.financialRows || [],
                 updatedAt: serverTimestamp()
             };
 
