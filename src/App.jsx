@@ -9,6 +9,7 @@ import Leads from "./Pages/Leads";
 import Clients from "./Pages/Clients";
 import QuotationTemplates from "./Pages/QuotationTemplates";
 import Settings from "./Pages/Settings";
+import TodayTask from "./Pages/TodayTask";
 
 function App() {
     return (
@@ -28,6 +29,9 @@ function App() {
                         }
                     >
                         <Route path="/" element={<DashboardHome />} />
+                        <Route path="/todaytask" element={<TodayTask />} />
+                        <Route path="/today-task" element={<Navigate to="/todaytask" replace />} />
+                        <Route path="/calls-today-task" element={<Navigate to="/todaytask" replace />} />
                         <Route path="/leads" element={<Leads />} />
                         <Route path="/clients" element={<Clients />} />
                         <Route path="/templates" element={<QuotationTemplates />} />

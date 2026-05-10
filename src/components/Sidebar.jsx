@@ -7,10 +7,12 @@ import {
     ChevronLeft,
     ChevronRight,
     Briefcase,
+    ClipboardList,
 } from "lucide-react";
 
 const navItems = [
     { label: "Dashboard", icon: LayoutDashboard, path: "/" },
+    { label: "Today Task", icon: ClipboardList, path: "/todaytask" },
     { label: "Leads", icon: Users, path: "/leads" },
     { label: "Clients & Projects", icon: Briefcase, path: "/clients" },
     { label: "Quotations", icon: FileText, path: "/templates" },
