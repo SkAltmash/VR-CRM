@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "../../firebase";
 import { motion } from "framer-motion";
-import { Loader2, Save, UploadCloud, Trash2, Image as ImageIcon, Building, Phone, MapPin, FileText, Settings as SettingsIcon } from "lucide-react";
+import { Loader2, Save, Trash2, Image as ImageIcon, Building, Phone, MapPin, FileText, Settings as SettingsIcon, Plus, CreditCard, ChevronDown, ChevronUp } from "lucide-react";
 import toast from "react-hot-toast";
 
 const CLOUD_NAME = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
@@ -12,6 +12,9 @@ export default function Settings() {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [uploadingImage, setUploadingImage] = useState(false);
+
+    const [bankAccounts, setBankAccounts] = useState([]);
+    const [expandedBank, setExpandedBank] = useState(0);
 
     const [formData, setFormData] = useState({
         companyName: "",
@@ -25,11 +28,6 @@ export default function Settings() {
         contact2Phone: "",
         aboutText: "",
         logoImage: "",
-        bankName: "",
-        accountName: "",
-        accountNumber: "",
-        ifscCode: "",
-        branch: "",
         expertiseList: []
     });
 
@@ -40,7 +38,28 @@ export default function Settings() {
                 const docRef = doc(db, "settings", "branding");
                 const docSnap = await getDoc(docRef);
                 if (docSnap.exists()) {
-                    setFormData(prev => ({ ...prev, ...docSnap.data() }));
+                    const data = docSnap.data();
+                    // Migrate old flat bank fields → array if no bankAccounts yet
+                    if (Array.isArray(data.bankAccounts) && data.bankAccounts.length > 0) {
+                        setBankAccounts(data.bankAccounts);
+                    } else if (data.bankName || data.accountNumber) {
+                        setBankAccounts([{
+                            bankName: data.bankName || "",
+                            accountName: data.accountName || "",
+                            accountNumber: data.accountNumber || "",
+                            ifscCode: data.ifscCode || "",
+                            branch: data.branch || "",
+                        }]);
+                    }
+                    // Strip old flat bank fields before loading into formData.
+                    const rest = { ...data };
+                    delete rest.bankName;
+                    delete rest.accountName;
+                    delete rest.accountNumber;
+                    delete rest.ifscCode;
+                    delete rest.branch;
+                    delete rest.bankAccounts;
+                    setFormData(prev => ({ ...prev, ...rest }));
                 }
             } catch (error) {
                 console.error("Failed to load settings:", error);
@@ -93,12 +112,31 @@ export default function Settings() {
         setFormData(p => ({ ...p, expertiseList: newArray }));
     };
 
+    // ── Bank account helpers ───────────────────────────────────────
+    const EMPTY_BANK = { bankName: "", accountName: "", accountNumber: "", ifscCode: "", branch: "" };
+
+    function addBankAccount() {
+        setBankAccounts(p => [...p, { ...EMPTY_BANK }]);
+        setExpandedBank(bankAccounts.length); // expand the new card
+    }
+
+    function removeBankAccount(i) {
+        setBankAccounts(p => p.filter((_, idx) => idx !== i));
+        setExpandedBank(prev => (prev >= i ? Math.max(0, prev - 1) : prev));
+    }
+
+    function updateBankField(i, field, value) {
+        setBankAccounts(p => p.map((acc, idx) => idx === i ? { ...acc, [field]: value } : acc));
+    }
+    // ──────────────────────────────────────────────────────────────
+
     const handleSave = async (e) => {
         e.preventDefault();
         setSaving(true);
         try {
             await setDoc(doc(db, "settings", "branding"), {
                 ...formData,
+                bankAccounts,
                 updatedAt: serverTimestamp()
             }, { merge: true });
             toast.success("Settings saved successfully!");
@@ -129,6 +167,7 @@ export default function Settings() {
                     <p className="text-sm text-slate-500 mt-1">Manage your company branding and PDF content</p>
                 </div>
             </div>
+
 
             <motion.form initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} onSubmit={handleSave} className="space-y-8 bg-white border border-slate-200 rounded-2xl p-8 shadow-sm">
 
@@ -252,34 +291,128 @@ export default function Settings() {
 
                 <hr className="border-slate-100" />
 
-                {/* Bank Details Section */}
+                {/* Bank Details Section — multi-account */}
                 <div>
-                    <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2 mb-6">
-                        <FileText size={20} className="text-amber-500" /> Bank Details
-                    </h2>
-                    <div className="grid grid-cols-2 max-md:grid-cols-1 gap-5">
-                        <div>
-                            <label className="block text-sm font-semibold text-slate-700 mb-1.5">Bank Name</label>
-                            <input type="text" placeholder="e.g. Canara Bank" value={formData.bankName} onChange={e => setFormData(p => ({ ...p, bankName: e.target.value }))} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-blue-500 focus:bg-white transition-all" />
+                    <div className="flex items-center justify-between mb-6">
+                        <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                            <CreditCard size={20} className="text-amber-500" /> Bank Accounts
+                        </h2>
+                        <button
+                            type="button"
+                            onClick={addBankAccount}
+                            className="flex items-center gap-1.5 text-sm font-semibold text-amber-600 bg-amber-50 hover:bg-amber-100 border border-amber-200 px-4 py-2 rounded-xl transition-all cursor-pointer"
+                        >
+                            <Plus size={15} /> Add Account
+                        </button>
+                    </div>
+
+                    {bankAccounts.length === 0 && (
+                        <div className="text-center py-10 border-2 border-dashed border-slate-200 rounded-xl">
+                            <CreditCard size={32} className="text-slate-300 mx-auto mb-2" />
+                            <p className="text-sm text-slate-400 font-medium">No bank accounts added yet</p>
+                            <p className="text-xs text-slate-300 mt-1">Click "+ Add Account" to add one</p>
                         </div>
-                        <div>
-                            <label className="block text-sm font-semibold text-slate-700 mb-1.5">Account Holder Name</label>
-                            <input type="text" placeholder="e.g. VR SolarTech" value={formData.accountName} onChange={e => setFormData(p => ({ ...p, accountName: e.target.value }))} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-blue-500 focus:bg-white transition-all" />
-                        </div>
-                        <div>
-                            <label className="block text-sm font-semibold text-slate-700 mb-1.5">Account Number</label>
-                            <input type="text" placeholder="e.g. 120036111454" value={formData.accountNumber} onChange={e => setFormData(p => ({ ...p, accountNumber: e.target.value }))} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-blue-500 focus:bg-white transition-all" />
-                        </div>
-                        <div className="grid grid-cols-2 gap-5">
-                            <div>
-                                <label className="block text-sm font-semibold text-slate-700 mb-1.5">IFSC Code</label>
-                                <input type="text" placeholder="e.g. CNRB0008172" value={formData.ifscCode} onChange={e => setFormData(p => ({ ...p, ifscCode: e.target.value }))} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-blue-500 focus:bg-white transition-all" />
+                    )}
+
+                    <div className="space-y-3">
+                        {bankAccounts.map((acc, i) => (
+                            <div key={i} className="border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+                                {/* Accordion header */}
+                                <button
+                                    type="button"
+                                    onClick={() => setExpandedBank(expandedBank === i ? -1 : i)}
+                                    className="w-full flex items-center justify-between px-5 py-3.5 bg-slate-50 hover:bg-slate-100 transition-colors cursor-pointer border-none text-left"
+                                >
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center shrink-0">
+                                            <CreditCard size={15} className="text-amber-600" />
+                                        </div>
+                                        <div>
+                                            <p className="text-sm font-bold text-slate-800">
+                                                {acc.bankName || `Bank Account ${i + 1}`}
+                                            </p>
+                                            {acc.accountNumber && (
+                                                <p className="text-xs text-slate-400 font-mono">
+                                                    ••••&nbsp;{acc.accountNumber.slice(-4)}
+                                                    {acc.ifscCode && <span className="ml-2 not-italic font-sans">{acc.ifscCode}</span>}
+                                                </p>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={(e) => { e.stopPropagation(); removeBankAccount(i); }}
+                                            className="p-1.5 rounded-lg text-red-400 hover:text-red-600 hover:bg-red-50 transition-colors cursor-pointer"
+                                            title="Remove account"
+                                        >
+                                            <Trash2 size={14} />
+                                        </button>
+                                        {expandedBank === i
+                                            ? <ChevronUp size={16} className="text-slate-400" />
+                                            : <ChevronDown size={16} className="text-slate-400" />}
+                                    </div>
+                                </button>
+
+                                {/* Accordion body */}
+                                {expandedBank === i && (
+                                    <div className="px-5 py-5 grid grid-cols-2 max-md:grid-cols-1 gap-4 bg-white">
+                                        <div>
+                                            <label className="block text-xs font-semibold text-slate-600 mb-1.5">Bank Name</label>
+                                            <input
+                                                type="text"
+                                                placeholder="e.g. Canara Bank"
+                                                value={acc.bankName}
+                                                onChange={e => updateBankField(i, "bankName", e.target.value)}
+                                                className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:border-amber-400 focus:bg-white focus:ring-2 focus:ring-amber-400/15 transition-all"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-semibold text-slate-600 mb-1.5">Account Holder Name</label>
+                                            <input
+                                                type="text"
+                                                placeholder="e.g. VR SolarTech"
+                                                value={acc.accountName}
+                                                onChange={e => updateBankField(i, "accountName", e.target.value)}
+                                                className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:border-amber-400 focus:bg-white focus:ring-2 focus:ring-amber-400/15 transition-all"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-semibold text-slate-600 mb-1.5">Account Number</label>
+                                            <input
+                                                type="text"
+                                                placeholder="e.g. 120036111454"
+                                                value={acc.accountNumber}
+                                                onChange={e => updateBankField(i, "accountNumber", e.target.value)}
+                                                className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:border-amber-400 focus:bg-white focus:ring-2 focus:ring-amber-400/15 transition-all font-mono"
+                                            />
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <div>
+                                                <label className="block text-xs font-semibold text-slate-600 mb-1.5">IFSC Code</label>
+                                                <input
+                                                    type="text"
+                                                    placeholder="e.g. CNRB0008172"
+                                                    value={acc.ifscCode}
+                                                    onChange={e => updateBankField(i, "ifscCode", e.target.value)}
+                                                    className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:border-amber-400 focus:bg-white focus:ring-2 focus:ring-amber-400/15 transition-all font-mono"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-semibold text-slate-600 mb-1.5">Branch</label>
+                                                <input
+                                                    type="text"
+                                                    placeholder="e.g. Karjat"
+                                                    value={acc.branch}
+                                                    onChange={e => updateBankField(i, "branch", e.target.value)}
+                                                    className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:border-amber-400 focus:bg-white focus:ring-2 focus:ring-amber-400/15 transition-all"
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
-                            <div>
-                                <label className="block text-sm font-semibold text-slate-700 mb-1.5">Branch</label>
-                                <input type="text" placeholder="e.g. Karjat" value={formData.branch} onChange={e => setFormData(p => ({ ...p, branch: e.target.value }))} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-blue-500 focus:bg-white transition-all" />
-                            </div>
-                        </div>
+                        ))}
                     </div>
                 </div>
 

@@ -1,8 +1,8 @@
 import { useAuth } from "../context/auth";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { LogOut, Search, Menu, Users, Briefcase, Loader2, X, FileText, Command } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
-import { collection, query, where, getDocs, limit, orderBy } from "firebase/firestore";
+import { collection, query, getDocs, limit, orderBy } from "firebase/firestore";
 import { db } from "../../firebase";
 
 export default function Navbar({ onMenuClick }) {

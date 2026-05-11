@@ -8,6 +8,7 @@ import {
     ChevronRight,
     Briefcase,
     ClipboardList,
+    MessageCircle,
 } from "lucide-react";
 
 const navItems = [
@@ -16,6 +17,7 @@ const navItems = [
     { label: "Leads", icon: Users, path: "/leads" },
     { label: "Clients & Projects", icon: Briefcase, path: "/clients" },
     { label: "Quotations", icon: FileText, path: "/templates" },
+    { label: "WA Templates", icon: MessageCircle, path: "/whatsapp-templates" },
     { label: "Settings", icon: Settings, path: "/settings" },
 ];
 

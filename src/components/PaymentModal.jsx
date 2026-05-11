@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { collection, query, orderBy, onSnapshot, serverTimestamp, runTransaction, doc } from "firebase/firestore";
 import { db } from "../../firebase";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, CheckCircle, Loader2, IndianRupee } from "lucide-react";
+import { X, Loader2 } from "lucide-react";
 import toast from "react-hot-toast";
 
 export default function PaymentModal({ isOpen, onClose, client, onPaymentAdded }) {

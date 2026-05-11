@@ -10,8 +10,6 @@ const PAGE_HEIGHT = 841.9;
 const MARGIN_X = 44;
 const CONTENT_WIDTH = PAGE_WIDTH - MARGIN_X * 2;
 
-let logoDataUrlPromise;
-
 function safeText(value, fallback = "") {
     return String(value || fallback).trim();
 }
@@ -26,6 +24,38 @@ function formatFileDate(date = new Date()) {
 
 function sanitizeFileName(value) {
     return safeText(value, "Lead").replace(/[^a-z0-9]+/gi, "_").replace(/^_+|_+$/g, "");
+}
+
+function toNumber(value) {
+    const match = String(value || "").replace(/,/g, "").match(/-?\d+(?:\.\d+)?/);
+    return match ? parseFloat(match[0]) : 0;
+}
+
+function numberToWords(n) {
+    if (!n || isNaN(n)) return "";
+    const num = Math.round(n);
+    const ones = ["","One","Two","Three","Four","Five","Six","Seven","Eight","Nine","Ten","Eleven","Twelve","Thirteen","Fourteen","Fifteen","Sixteen","Seventeen","Eighteen","Nineteen"];
+    const tens = ["","","Twenty","Thirty","Forty","Fifty","Sixty","Seventy","Eighty","Ninety"];
+    function words(value) {
+        if (value < 20) return ones[value];
+        if (value < 100) return tens[Math.floor(value / 10)] + (value % 10 ? " " + ones[value % 10] : "");
+        if (value < 1000) return ones[Math.floor(value / 100)] + " Hundred" + (value % 100 ? " " + words(value % 100) : "");
+        if (value < 100000) return words(Math.floor(value / 1000)) + " Thousand" + (value % 1000 ? " " + words(value % 1000) : "");
+        if (value < 10000000) return words(Math.floor(value / 100000)) + " Lakh" + (value % 100000 ? " " + words(value % 100000) : "");
+        return words(Math.floor(value / 10000000)) + " Crore" + (value % 10000000 ? " " + words(value % 10000000) : "");
+    }
+    return words(num) + " Rupees Only";
+}
+
+function getFinancialGrandTotal(rows = []) {
+    if (!Array.isArray(rows)) return 0;
+    return rows.reduce((sum, row) => {
+        const rate = toNumber(row?.[1]);
+        const discount = toNumber(row?.[3]);
+        const savedFinal = toNumber(row?.[4]);
+        const finalAmount = rate || discount ? rate - discount : savedFinal;
+        return sum + finalAmount;
+    }, 0);
 }
 
 function getQuotationNo(lead, type) {
@@ -112,7 +142,7 @@ function drawHeader(doc, pageNumber, logoDataUrl, settings) {
     doc.rect(0, 110, PAGE_WIDTH, 3, "F");
 }
 
-function drawFooter(doc, pageNumber, logoDataUrl, settings) {
+function drawFooter(doc, pageNumber, logoDataUrl, settings, pageCount = PAGE_COUNT) {
     doc.setDrawColor(226, 232, 240);
     doc.setLineWidth(0.5);
     doc.line(MARGIN_X, PAGE_HEIGHT - 45, PAGE_WIDTH - MARGIN_X, PAGE_HEIGHT - 45);
@@ -138,13 +168,13 @@ function drawFooter(doc, pageNumber, logoDataUrl, settings) {
 
     doc.setFont("helvetica", "italic");
     doc.setTextColor(148, 163, 184);
-    doc.text(`Page ${pageNumber} of ${PAGE_COUNT}`, PAGE_WIDTH - MARGIN_X, PAGE_HEIGHT - 32, { align: "right" });
+    doc.text(`Page ${pageNumber} of ${pageCount}`, PAGE_WIDTH - MARGIN_X, PAGE_HEIGHT - 32, { align: "right" });
 }
 
-function addPage(doc, pageNumber, logoDataUrl, settings) {
+function addPage(doc, pageNumber, logoDataUrl, settings, pageCount = PAGE_COUNT) {
     if (pageNumber > 1) doc.addPage();
     drawHeader(doc, pageNumber, logoDataUrl, settings);
-    drawFooter(doc, pageNumber, logoDataUrl, settings);
+    drawFooter(doc, pageNumber, logoDataUrl, settings, pageCount);
     return pageNumber === 1 ? 140 : 60;
 }
 
@@ -212,8 +242,8 @@ function drawImageBox(doc, title, y, imageDataUrl) {
     return y + 176;
 }
 
-function buildPageOne(doc, lead, type, logoDataUrl, settings) {
-    let y = addPage(doc, 1, logoDataUrl, settings);
+function buildPageOne(doc, lead, type, logoDataUrl, settings, pageNumber = 1, pageCount = PAGE_COUNT) {
+    let y = addPage(doc, pageNumber, logoDataUrl, settings, pageCount);
     const today = new Date();
 
     doc.setFont("helvetica", "bold");
@@ -275,12 +305,31 @@ function buildPageOne(doc, lead, type, logoDataUrl, settings) {
     });
 }
 
-function buildPageTwo(doc, type, logoDataUrl, settings) {
-    let y = addPage(doc, 2, logoDataUrl, settings);
+function buildPageTwo(doc, type, logoDataUrl, settings, pageNumber = 2, pageCount = PAGE_COUNT) {
+    let y = addPage(doc, pageNumber, logoDataUrl, settings, pageCount);
     y = paragraph(doc, "To,", y, { after: 4 });
-    y = paragraph(doc, "Respected sir", y, { after: 12 });
-    y = paragraph(doc, type.intro, y, { lineHeight: 14 });
-    
+
+    // Use introConfig if available, fall back to old intro string
+    const cfg = type.introConfig;
+    let salutation = "Respected Sir,";
+    let introText = type.intro || "";
+
+    if (cfg && cfg.capacities && cfg.capacities.length > 0) {
+        salutation = cfg.salutation || "Respected Sir,";
+        const UNITS_PER_KW_PER_YEAR = 4 * 365; // 1460
+        const capParts = cfg.capacities.map(c => {
+            const units = Math.round(c.kw * UNITS_PER_KW_PER_YEAR);
+            return `(${c.kw} KW DC capacities to generate approx. ${units.toLocaleString("en-IN")} AC units respectively annually.)`;
+        }).join(" ");
+        const projectType = cfg.projectType || "Net-Metering based Rooftop PV Solar Power Plant";
+        const closing = cfg.closing || "";
+        introText = `We are delighted to present to you the quotation/proposal for a ${projectType} of ${capParts} ${closing}`.trim();
+    }
+
+    y = paragraph(doc, salutation, y, { after: 12 });
+    y = paragraph(doc, introText, y, { lineHeight: 14 });
+
+
     if (settings.aboutText) {
         y = sectionTitle(doc, "About us:-", y + 4);
         y = paragraph(doc, settings.aboutText, y, { lineHeight: 14 });
@@ -299,34 +348,30 @@ function buildPageTwo(doc, type, logoDataUrl, settings) {
     paragraph(doc, "Solar energy helps the country for better environment with Green Energy.", y + 8, { bold: true });
 }
 
-function buildPageThree(doc, type, logoDataUrl, diagramImageDataUrl, settings) {
-    let y = addPage(doc, 3, logoDataUrl, settings);
+function buildPageThree(doc, type, logoDataUrl, diagramImageDataUrl, singleLineImageDataUrl, settings, pageNumber = 3, pageCount = PAGE_COUNT) {
+    let y = addPage(doc, pageNumber, logoDataUrl, settings, pageCount);
     y = sectionTitle(doc, `How does ${type.projectName} work?`, y);
     y = drawImageBox(doc, type.diagramTitle, y + 8, diagramImageDataUrl);
-    
+
     const text1 = type.howItWorksText1 || "The solar panels convert sunlight into electric energy, which is Direct Current (DC). This current is sent to an inverter or controller as per the system design. The power is then converted or regulated for useful consumption at the customer site.";
     const text2 = type.howItWorksText2 || "The generated power from the plant can fulfill the power requirement of the customer site during the daytime. The generated power is utilized, and surplus power is fed into the grid for later use.";
     const text3 = type.howItWorksText3 || "All electrical components will be tested in accordance with manufacturer instructions and project requirements before handover.";
 
     y = paragraph(doc, text1, y, { lineHeight: 14 });
     if (text2) y = paragraph(doc, text2, y, { lineHeight: 14 });
-    if (text3) paragraph(doc, text3, y, { lineHeight: 14 });
-}
+    if (text3) y = paragraph(doc, text3, y, { lineHeight: 14 });
 
-function buildPageFour(doc, type, logoDataUrl, singleLineImageDataUrl, settings) {
-    let y = addPage(doc, 4, logoDataUrl, settings);
-    y = sectionTitle(doc, type.benefitsTitle, y);
-    y = bulletList(doc, type.benefits, y);
-
+    // Benefits section — merged into same page
+    y = sectionTitle(doc, type.benefitsTitle || "Benefits", y + 10);
+    y = bulletList(doc, type.benefits || [], y);
     y = sectionTitle(doc, "Single Line Diagram", y + 8);
     y = drawImageBox(doc, "SOLAR POWER SYSTEM FLOW", y + 8, singleLineImageDataUrl);
-
     paragraph(doc, "A Solar Power system consists of following main elements:", y, { bold: true, after: 8 });
     paragraph(doc, "Solar Panels | Mounting Structure | Inverter / Controller | Solar Cables & Connectors | Protection System | Distribution Box", y + 24, { lineHeight: 14 });
 }
 
-function buildPageFive(doc, type, logoDataUrl, settings) {
-    let y = addPage(doc, 5, logoDataUrl, settings);
+function buildPageFour(doc, type, logoDataUrl, settings, pageNumber = 4, pageCount = PAGE_COUNT) {
+    let y = addPage(doc, pageNumber, logoDataUrl, settings, pageCount);
     autoTable(doc, {
         startY: y,
         margin: { left: MARGIN_X, right: MARGIN_X },
@@ -349,7 +394,7 @@ function buildPageFive(doc, type, logoDataUrl, settings) {
     autoTable(doc, {
         startY: y + 32,
         margin: { left: MARGIN_X, right: MARGIN_X },
-        head: [["Description", "Rate", "Total", "Discount", "Total"]],
+        head: [["Description", "Rate", "Total", "Discount", "Final"]],
         body: type.financialRows,
         styles: { fontSize: 8.5, cellPadding: 6, textColor: [51, 65, 85], lineColor: [226, 232, 240], lineWidth: 0.5 },
         headStyles: { fillColor: [37, 99, 235], textColor: [255, 255, 255] },
@@ -357,13 +402,94 @@ function buildPageFive(doc, type, logoDataUrl, settings) {
     });
 
     y = doc.lastAutoTable.finalY + 18;
-    y = paragraph(doc, `IN WORDS: - ${type.amountWords}`, y, { bold: true, after: 14 });
+    const grandTotal = getFinancialGrandTotal(type.financialRows);
+    const typedAmount = toNumber(type.amountLabel);
+    const displayTotal = typedAmount || grandTotal;
+    const amountLabel = safeText(type.amountLabel) || (displayTotal > 0 ? `Rs. ${Math.round(displayTotal).toLocaleString("en-IN")}/-` : "");
+    const amountWords = safeText(type.amountWords) || numberToWords(displayTotal);
+    if (amountLabel) y = paragraph(doc, `TOTAL AMOUNT: - ${amountLabel}`, y, { bold: true, after: 8 });
+    if (amountWords) y = paragraph(doc, `IN WORDS: - ${amountWords}`, y, { bold: true, after: 14 });
     y = paragraph(doc, "Note*: GST will be applied as per applicable government norms. All taxes, installation, structure, and service inclusions will follow the final agreed scope.", y, { lineHeight: 13 });
     paragraph(doc, "Note: Any additional fabrication charges will be paid extra as per changes if done or if required by clients.", y + 4, { lineHeight: 13 });
 }
 
-function buildPageSix(doc, logoDataUrl, settings, type, warranteeImageDataUrl) {
-    let y = addPage(doc, 6, logoDataUrl, settings);
+function buildPageFive(doc, type, logoDataUrl, settings, pageNumber = 5, pageCount = PAGE_COUNT) {
+    let y = addPage(doc, pageNumber, logoDataUrl, settings, pageCount);
+    y = sectionTitle(doc, "Return on Investment (ROI) & SIP Analysis", y);
+
+    function toNum(v) { return parseFloat(String(v || "").replace(/,/g, "")) || 0; }
+    const rows = Array.isArray(type.financialRows) ? type.financialRows : [];
+    const quotedAmount  = rows.reduce((s, r) => { const rt = toNum(r[1]); const d = toNum(r[3]); return s + (rt - d); }, 0);
+    const govtSubsidy   = toNum(type.govtSubsidy);
+    const actualInvest  = Math.max(0, quotedAmount - govtSubsidy);
+    const monthlyBill   = toNum(type.monthlyBill);
+    const annualSavings = monthlyBill * 12;
+    const paybackYears  = annualSavings > 0 ? actualInvest / annualSavings : 0;
+    const pwY = Math.floor(paybackYears);
+    const pwM = Math.round((paybackYears - pwY) * 12);
+    const total25 = annualSavings * 25;
+    const systemInfo = type.name || type.projectName || "Solar Power System";
+    const fmt = n => Math.round(n).toLocaleString("en-IN");
+    function toLakhs(n) {
+        if (n >= 10000000) return `Rs.${(n/10000000).toFixed(1)} Crore`;
+        if (n >= 100000) return `Rs.${(n/100000).toFixed(1)} Lakhs`;
+        return `Rs.${fmt(n)}`;
+    }
+
+    // Summary Table
+    autoTable(doc, {
+        startY: y + 8,
+        margin: { left: MARGIN_X, right: MARGIN_X },
+        head: [["System Info", "Monthly Bill", "Quoted Amount", "Govt. Subsidy", "Actual Investment", "Estimated ROI"]],
+        body: [[
+            systemInfo,
+            monthlyBill > 0 ? `Rs.${fmt(monthlyBill)}/month` : "Not provided",
+            quotedAmount > 0 ? `Rs.${fmt(quotedAmount)}` : "—",
+            govtSubsidy > 0 ? `Rs.${fmt(govtSubsidy)}` : "—",
+            actualInvest > 0 ? `Rs.${fmt(actualInvest)}` : "—",
+            annualSavings > 0 && actualInvest > 0 ? `${pwY} Year${pwY !== 1 ? "s" : ""} ${pwM} Month${pwM !== 1 ? "s" : ""}` : "—",
+        ]],
+        styles: { fontSize: 8.5, cellPadding: 7, textColor: [51, 65, 85], lineColor: [226, 232, 240], lineWidth: 0.5 },
+        headStyles: { fillColor: [37, 99, 235], textColor: [255, 255, 255], fontStyle: "bold" },
+        columnStyles: {
+            4: { fontStyle: "bold", textColor: [234, 88, 12] },
+            5: { fontStyle: "bold", textColor: [37, 99, 235] },
+        },
+        alternateRowStyles: { fillColor: [239, 246, 255] },
+    });
+
+    y = doc.lastAutoTable.finalY + 18;
+
+    if (monthlyBill > 0 && actualInvest > 0) {
+        // Professional Savings Text
+        doc.setFont("helvetica", "bold"); doc.setFontSize(10); doc.setTextColor(30, 64, 175);
+        doc.text("Professional Savings Summary", MARGIN_X, y);
+        y += 14;
+
+        y = paragraph(doc, `After approximately ${pwY} Year${pwY !== 1 ? "s" : ""} ${pwM} Month${pwM !== 1 ? "s" : ""}, your solar system can recover its installation cost and start generating estimated savings of around Rs.${fmt(monthlyBill)} per month for the remaining lifespan of the system.`, y, { lineHeight: 14 });
+        y = paragraph(doc, `Over 25 years, this may result in an estimated direct electricity bill saving of approximately ${toLakhs(total25)}.*`, y, { lineHeight: 14 });
+
+        y += 10;
+        // SIP Line
+        doc.setFont("helvetica", "bold"); doc.setFontSize(10); doc.setTextColor(88, 28, 135);
+        doc.text("Investment Comparison", MARGIN_X, y);
+        y += 14;
+        doc.setFont("helvetica", "oblique"); doc.setFontSize(9); doc.setTextColor(75, 85, 99);
+        const sipLines = doc.splitTextToSize("If the equivalent monthly savings are invested through SIPs with an assumed average annual return of 12%, the long-term value may become significantly higher over 25 years.*", CONTENT_WIDTH);
+        doc.text(sipLines, MARGIN_X, y);
+        y += sipLines.length * 13 + 12;
+
+        // Disclaimer
+        doc.setFont("helvetica", "italic"); doc.setFontSize(8); doc.setTextColor(107, 114, 128);
+        const disc = doc.splitTextToSize("* Savings are estimated values based on current electricity tariffs, sunlight conditions, and system performance. Actual results may vary.", CONTENT_WIDTH);
+        doc.text(disc, MARGIN_X, y);
+    } else {
+        paragraph(doc, "Monthly electricity bill and govt. subsidy are required to calculate the ROI. Please fill them in the quotation form.", y, { lineHeight: 14 });
+    }
+}
+
+function buildPageSix(doc, logoDataUrl, settings, type, warranteeImageDataUrl, pageNumber = 6, pageCount = PAGE_COUNT) {
+    let y = addPage(doc, pageNumber, logoDataUrl, settings, pageCount);
     y = sectionTitle(doc, "Warrantee Details:-", y);
     
     const panelsText = type.warranteePanels || "The solar modules are warranted by the solar panel manufacturer for a period of 25 years. The warranty of modules and their respective DC connectors and cables shall be free from material defects in design, materials, and workmanship that affect the performance of the module.";
@@ -393,7 +519,7 @@ function buildPageSix(doc, logoDataUrl, settings, type, warranteeImageDataUrl) {
 
     if (warranteeImageDataUrl) {
         if (y + 190 > PAGE_HEIGHT - MARGIN_X) {
-            y = addPage(doc, 6, logoDataUrl, settings);
+            y = addPage(doc, pageNumber, logoDataUrl, settings, pageCount);
         } else {
             y += 10;
         }
@@ -401,8 +527,8 @@ function buildPageSix(doc, logoDataUrl, settings, type, warranteeImageDataUrl) {
     }
 }
 
-function buildPageSeven(doc, logoDataUrl, settings) {
-    let y = addPage(doc, 7, logoDataUrl, settings);
+function buildPageSeven(doc, logoDataUrl, settings, pageNumber = 7, pageCount = PAGE_COUNT) {
+    let y = addPage(doc, pageNumber, logoDataUrl, settings, pageCount);
     y = sectionTitle(doc, `${settings.companyName || "Company"} Scope of work:-`, y);
     y = bulletList(doc, [
         "Prepare a full system design to include civil, structural, electrical, and mechanical components, with construction drawings and specifications.",
@@ -426,31 +552,46 @@ function buildPageSeven(doc, logoDataUrl, settings) {
     ], y);
 }
 
-function buildPageEight(doc, type, logoDataUrl, settings) {
-    let y = addPage(doc, 8, logoDataUrl, settings);
+function buildPageEight(doc, type, logoDataUrl, settings, pageNumber = 8, pageCount = PAGE_COUNT) {
+    let y = addPage(doc, pageNumber, logoDataUrl, settings, pageCount);
     y = sectionTitle(doc, "Terms & conditions:-", y);
     y = paragraph(doc, "System Information", y, { bold: true, after: 8 });
     y = paragraph(doc, "System will be installed by our certified system Integrator.", y, { lineHeight: 14 });
     y = paragraph(doc, "Delivery", y + 4, { bold: true, after: 8 });
-    y = paragraph(doc, type.delivery, y, { lineHeight: 14 });
+    y = paragraph(doc, type.delivery || "", y, { lineHeight: 14 });
+    const paymentTerms = Array.isArray(type.paymentTerms) ? type.paymentTerms : [];
     y = paragraph(doc, "Payment Terms:-", y + 4, { bold: true, after: 8 });
-    y = paragraph(doc, type.paymentTerms.join("\n"), y, { lineHeight: 14 });
+    y = paragraph(doc, paymentTerms.join("\n"), y, { lineHeight: 14 });
 
     y = paragraph(doc, "Bank Details:-", y + 8, { bold: true, after: 8 });
+
+    // Build rows from bankAccounts array, fall back to legacy flat fields
+    const bankRows = Array.isArray(settings.bankAccounts) && settings.bankAccounts.length > 0
+        ? settings.bankAccounts.map(acc => [
+            acc.bankName || "",
+            acc.accountName || "",
+            acc.accountNumber || "",
+            acc.ifscCode || "",
+            acc.branch || "",
+        ])
+        : [[
+            settings.bankName || "",
+            settings.accountName || "",
+            settings.accountNumber || "",
+            settings.ifscCode || "",
+            settings.branch || "",
+        ]];
+
     autoTable(doc, {
         startY: y,
         margin: { left: MARGIN_X, right: MARGIN_X },
         head: [["Bank Name", "Account Holder Name", "Account Number", "IFSC Code", "Branch"]],
-        body: [[
-            settings.bankName || "", 
-            settings.accountName || "", 
-            settings.accountNumber || "", 
-            settings.ifscCode || "", 
-            settings.branch || ""
-        ]],
+        body: bankRows,
         styles: { fontSize: 8.5, cellPadding: 6, textColor: [51, 65, 85], lineColor: [226, 232, 240], lineWidth: 0.5 },
         headStyles: { fillColor: [37, 99, 235], textColor: [255, 255, 255] },
+        alternateRowStyles: { fillColor: [239, 246, 255] },
     });
+
 
     y = doc.lastAutoTable.finalY + 28;
     y = paragraph(doc, "We look forward to your response and the opportunity to work with you!", y, { lineHeight: 14 });
@@ -458,6 +599,8 @@ function buildPageEight(doc, type, logoDataUrl, settings) {
     y = paragraph(doc, "Regards,", y + 20, { after: 34 });
     paragraph(doc, settings.companyName || "", y, { bold: true });
 }
+
+// buildPageEight replaced — ROI moved to page 5 above
 
 async function fetchGlobalSettings() {
     try {
@@ -467,10 +610,16 @@ async function fetchGlobalSettings() {
         console.error("Failed to load global settings for PDF:", err);
     }
     return {};
+
 }
 
 export async function createQuotationPdf(lead, formData) {
-    const type = formData;
+    // Normalize nested arrays — Firestore stores them as JSON strings
+    const type = {
+        ...formData,
+        materialRows:  typeof formData.materialRows  === "string" ? JSON.parse(formData.materialRows)  : (formData.materialRows  || []),
+        financialRows: typeof formData.financialRows === "string" ? JSON.parse(formData.financialRows) : (formData.financialRows || []),
+    };
     const settings = await fetchGlobalSettings();
     const logoDataUrl = await loadLogoDataUrl(settings);
     const diagramImageDataUrl = type.diagramImage ? await loadImageDataUrl(type.diagramImage) : null;
@@ -484,14 +633,20 @@ export async function createQuotationPdf(lead, formData) {
         author: settings.companyName || "CRM System",
     });
 
-    buildPageOne(doc, lead, type, logoDataUrl, settings);
-    buildPageTwo(doc, type, logoDataUrl, settings);
-    buildPageThree(doc, type, logoDataUrl, diagramImageDataUrl, settings);
-    buildPageFour(doc, type, logoDataUrl, singleLineImageDataUrl, settings);
-    buildPageFive(doc, type, logoDataUrl, settings);
-    buildPageSix(doc, logoDataUrl, settings, type, warranteeImageDataUrl);
-    buildPageSeven(doc, logoDataUrl, settings);
-    buildPageEight(doc, type, logoDataUrl, settings);
+    const includeRoiInPdf = type.includeRoiInPdf !== false;
+    const pageCount = includeRoiInPdf ? PAGE_COUNT : PAGE_COUNT - 1;
+    let pageNumber = 1;
+
+    buildPageOne(doc, lead, type, logoDataUrl, settings, pageNumber++, pageCount);
+    buildPageTwo(doc, type, logoDataUrl, settings, pageNumber++, pageCount);
+    buildPageThree(doc, type, logoDataUrl, diagramImageDataUrl, singleLineImageDataUrl, settings, pageNumber++, pageCount);
+    buildPageFour(doc, type, logoDataUrl, settings, pageNumber++, pageCount);
+    if (includeRoiInPdf) {
+        buildPageFive(doc, type, logoDataUrl, settings, pageNumber++, pageCount);
+    }
+    buildPageSix(doc, logoDataUrl, settings, type, warranteeImageDataUrl, pageNumber++, pageCount);
+    buildPageSeven(doc, logoDataUrl, settings, pageNumber++, pageCount);
+    buildPageEight(doc, type, logoDataUrl, settings, pageNumber, pageCount);
 
     return { doc, type };
 }

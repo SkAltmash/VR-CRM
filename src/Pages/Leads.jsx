@@ -520,7 +520,6 @@ export default function Leads() {
     const totalPages = Math.ceil(filteredTotal.length / PAGE_SIZE);
 
     // Keyboard navigation — placed after filtered is computed
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     useEffect(() => {
         function handleKeyDown(e) {
             if (modalOpen || viewOpen || bulkOpen || mergeOpen || convertOpen) return;

@@ -10,6 +10,7 @@ import Clients from "./Pages/Clients";
 import QuotationTemplates from "./Pages/QuotationTemplates";
 import Settings from "./Pages/Settings";
 import TodayTask from "./Pages/TodayTask";
+import WhatsAppTemplates from "./Pages/WhatsAppTemplates";
 
 function App() {
     return (
@@ -35,6 +36,7 @@ function App() {
                         <Route path="/leads" element={<Leads />} />
                         <Route path="/clients" element={<Clients />} />
                         <Route path="/templates" element={<QuotationTemplates />} />
+                        <Route path="/whatsapp-templates" element={<WhatsAppTemplates />} />
                         <Route path="/settings" element={<Settings />} />
                     </Route>
 

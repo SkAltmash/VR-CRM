@@ -8,26 +8,6 @@ import toast from "react-hot-toast";
 const CLOUD_NAME = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
 const UPLOAD_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
 
-// Map template name/badge to a cover image
-const QUOTATION_IMAGES = [
-    { keywords: ["hybrid"], img: "/Quotation/Hybrid-Solar-System.png" },
-    { keywords: ["off-grid", "off grid", "offgrid"], img: "/Quotation/Off-Grid.png" },
-    { keywords: ["on-grid", "on grid", "ongrid", "drawing"], img: "/Quotation/On Grid Drawing.png" },
-    { keywords: ["pump", "water pump", "solar pump"], img: "/Quotation/Solar Pump.jpg.jpeg" },
-    { keywords: ["heater", "water heater", "solar water"], img: "/Quotation/Solar Water heater.png" },
-    { keywords: ["street", "street light"], img: "/Quotation/solar street light.jpg.jpeg" },
-    { keywords: ["single line", "diagram"], img: "/Quotation/Single Line Diagram.png" },
-    { keywords: ["setup"], img: "/Quotation/Setup.png" },
-];
-
-function getTemplateImage(template) {
-    const haystack = `${template.name} ${template.badge} ${template.projectName}`.toLowerCase();
-    for (const entry of QUOTATION_IMAGES) {
-        if (entry.keywords.some(k => haystack.includes(k))) return entry.img;
-    }
-    return "/Quotation/Setup.png";
-}
-
 export default function QuotationPreviewModal({ isOpen, lead, onClose, onActivity }) {
     const [templates, setTemplates] = useState([]);
     const [fetching, setFetching] = useState(true);
@@ -41,15 +21,56 @@ export default function QuotationPreviewModal({ isOpen, lead, onClose, onActivit
     const [uploadingImage, setUploadingImage] = useState(false);
 
     const FORM_TABS = [
-        { id: "details", label: "General" },
-        { id: "howItWorks", label: "How It Works" },
-        { id: "images", label: "Images" },
-        { id: "warrantee", label: "Warrantee Details" },
-        { id: "specification", label: "Materials & Financials" },
-        { id: "financials", label: "Financials" },
-        { id: "scope", label: "Benefits & Terms" },
-        { id: "terms", label: "Terms & Delivery" },
+        { id: "details",       label: "1 · Cover" },
+        { id: "intro",         label: "2 · Intro" },
+        { id: "howItWorks",    label: "3 · How It Works & Benefits" },
+        { id: "specification", label: "4 · Materials & Financials" },
+        { id: "roi",           label: "5 · ROI & SIP" },
+        { id: "warrantee",     label: "6 · Warrantee" },
+        { id: "scope",         label: "7 · Scope" },
+        { id: "terms",         label: "8 · Terms" },
     ];
+
+    // ── Intro helpers ─────────────────────────────────────────────
+    const UNITS_PER_KW_PER_YEAR = 4 * 365; // 1460
+
+    function getIntroConfig() {
+        return formData.introConfig || {
+            salutation: "Respected Sir,",
+            capacities: [{ kw: 3 }],
+            closing: "This proposal has been designed as per the detailed analysis of the site and is based on your electricity bill calculation and the space available.",
+            projectType: "Net-Metering based Rooftop PV Solar Power Plant"
+        };
+    }
+
+    function updateIntroConfig(field, value) {
+        setFormData(p => ({ ...p, introConfig: { ...getIntroConfig(), [field]: value } }));
+    }
+
+    function addIntroCapacity() {
+        const cfg = getIntroConfig();
+        updateIntroConfig("capacities", [...cfg.capacities, { kw: 1 }]);
+    }
+
+    function updateIntroCapacity(i, kw) {
+        const cfg = getIntroConfig();
+        updateIntroConfig("capacities", cfg.capacities.map((c, idx) => idx === i ? { kw: Number(kw) || 0 } : c));
+    }
+
+    function removeIntroCapacity(i) {
+        const cfg = getIntroConfig();
+        updateIntroConfig("capacities", cfg.capacities.filter((_, idx) => idx !== i));
+    }
+
+    function buildIntroPreview(cfg) {
+        if (!cfg || !cfg.capacities || cfg.capacities.length === 0) return "";
+        const capParts = cfg.capacities.map(c => {
+            const units = Math.round(c.kw * UNITS_PER_KW_PER_YEAR);
+            return `(${c.kw} KW DC capacities to generate approx. ${units.toLocaleString("en-IN")} AC units respectively annually.)`;
+        }).join(" ");
+        return `We are delighted to present to you the quotation/proposal for a ${cfg.projectType || "Net-Metering based Rooftop PV Solar Power Plant"} of ${capParts} ${cfg.closing || ""}`.trim();
+    }
+    // ──────────────────────────────────────────────────────────
 
     const selectedType = useMemo(
         () => templates.find((type) => type.id === selectedTypeId) || templates[0] || {},
@@ -57,6 +78,14 @@ export default function QuotationPreviewModal({ isOpen, lead, onClose, onActivit
     );
 
     const [formData, setFormData] = useState({});
+    const includeRoiInPdf = formData.includeRoiInPdf !== false;
+
+    const toggleRoiInPdf = () => {
+        setFormData((prev) => ({
+            ...prev,
+            includeRoiInPdf: !(prev.includeRoiInPdf !== false),
+        }));
+    };
 
     useEffect(() => {
         if (!isOpen) return;
@@ -75,9 +104,12 @@ export default function QuotationPreviewModal({ isOpen, lead, onClose, onActivit
                     };
                 });
                 setTemplates(data);
-                if (data.length > 0 && (!selectedTypeId || !data.find(d => d.id === selectedTypeId))) {
-                    setSelectedTypeId(data[0].id);
-                }
+                setSelectedTypeId((prev) => {
+                    if (data.length > 0 && (!prev || !data.find(d => d.id === prev))) {
+                        return data[0].id;
+                    }
+                    return prev;
+                });
             })
             .catch(err => {
                 console.error(err);
@@ -221,9 +253,11 @@ export default function QuotationPreviewModal({ isOpen, lead, onClose, onActivit
     };
 
     const updateArrayRow = (arrayName, rowIndex, colIndex, value) => {
-        const newArray = [...formData[arrayName]];
+        const newArray = Array.isArray(formData[arrayName]) ? [...formData[arrayName]] : [];
         if (colIndex !== null) {
-            newArray[rowIndex][colIndex] = value;
+            const row = Array.isArray(newArray[rowIndex]) ? [...newArray[rowIndex]] : [];
+            row[colIndex] = value;
+            newArray[rowIndex] = row;
         } else {
             newArray[rowIndex] = value;
         }
@@ -231,11 +265,12 @@ export default function QuotationPreviewModal({ isOpen, lead, onClose, onActivit
     };
 
     const addArrayRow = (arrayName, template) => {
-        setFormData({ ...formData, [arrayName]: [...formData[arrayName], template] });
+        const currentArray = Array.isArray(formData[arrayName]) ? formData[arrayName] : [];
+        setFormData({ ...formData, [arrayName]: [...currentArray, template] });
     };
 
     const removeArrayRow = (arrayName, rowIndex) => {
-        const newArray = [...formData[arrayName]];
+        const newArray = Array.isArray(formData[arrayName]) ? [...formData[arrayName]] : [];
         newArray.splice(rowIndex, 1);
         setFormData({ ...formData, [arrayName]: newArray });
     };
@@ -261,6 +296,31 @@ export default function QuotationPreviewModal({ isOpen, lead, onClose, onActivit
             setUploadingImage(false);
         }
     };
+
+    function renderRoiPdfButton(compact = false) {
+        const label = includeRoiInPdf
+            ? (compact ? "ROI On" : "Include ROI in PDF")
+            : (compact ? "ROI Off" : "Skip ROI in PDF");
+        const title = includeRoiInPdf
+            ? "ROI table will be included in the PDF"
+            : "ROI table will be skipped from the PDF";
+
+        return (
+            <button
+                type="button"
+                onClick={toggleRoiInPdf}
+                aria-pressed={includeRoiInPdf}
+                title={title}
+                className={`flex items-center gap-1.5 rounded-xl border text-sm font-semibold cursor-pointer transition-all ${compact ? "min-w-[86px] justify-center px-3 py-2" : "px-3.5 py-2"} ${includeRoiInPdf
+                    ? "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                    : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50"
+                }`}
+            >
+                {includeRoiInPdf ? <CheckCircle2 size={14} /> : <FileText size={14} />}
+                {label}
+            </button>
+        );
+    }
 
     return (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={onClose}>
@@ -302,13 +362,12 @@ export default function QuotationPreviewModal({ isOpen, lead, onClose, onActivit
                         ) : (
                             <div className="flex flex-col gap-1.5">
                                 {templates.map((type) => {
-                                    const img = getTemplateImage(type);
                                     const isSelected = selectedTypeId === type.id;
                                     return (
                                         <button key={type.id} type="button" onClick={() => setSelectedTypeId(type.id)}
                                             className={`flex items-center gap-2.5 w-full text-left rounded-lg px-2 py-1.5 cursor-pointer transition-all duration-150 ${isSelected
-                                                    ? "bg-blue-50 ring-1 ring-blue-400"
-                                                    : "hover:bg-slate-100"
+                                                ? "bg-blue-50 ring-1 ring-blue-400"
+                                                : "hover:bg-slate-100"
                                                 }`}
                                         >
 
@@ -352,11 +411,75 @@ export default function QuotationPreviewModal({ isOpen, lead, onClose, onActivit
                                                     <input type="text" value={formData.projectName || ""} onChange={(e) => handleFormChange(e, "projectName")} className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-blue-500" />
                                                 </div>
                                                 <div className="col-span-2">
-                                                    <label className="block text-xs text-slate-500 mb-1">Introduction</label>
-                                                    <textarea value={formData.intro || ""} onChange={(e) => handleFormChange(e, "intro")} className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-blue-500 min-h-[80px]" />
+                                                    <label className="block text-xs text-slate-500 mb-1">Introduction <span className="text-slate-400">(auto-generated — edit in "Intro / Page 2" tab)</span></label>
+                                                    <textarea readOnly rows={2} value={buildIntroPreview(getIntroConfig())} className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none bg-slate-50 text-slate-400 resize-none" />
                                                 </div>
+                                            </div>
+                                        )}
 
-                                                <div className="col-span-2 mt-4"><h3 className="font-semibold text-slate-800 mb-2 border-b pb-2">Benefits</h3></div>
+                                        {formTab === "intro" && (() => {
+                                            const cfg = getIntroConfig();
+                                            const preview = buildIntroPreview(cfg);
+                                            return (
+                                                <div className="space-y-5">
+                                                    <div>
+                                                        <label className="block text-xs font-semibold text-slate-700 mb-1">Salutation</label>
+                                                        <input type="text" value={cfg.salutation} onChange={e => updateIntroConfig("salutation", e.target.value)} className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-blue-500" placeholder="e.g. Respected Sir," />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-xs font-semibold text-slate-700 mb-1">Project Type Description</label>
+                                                        <input type="text" value={cfg.projectType || ""} onChange={e => updateIntroConfig("projectType", e.target.value)} className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-blue-500" placeholder="e.g. Net-Metering based Rooftop PV Solar Power Plant" />
+                                                    </div>
+                                                    <div>
+                                                        <div className="flex items-center justify-between mb-3">
+                                                            <div>
+                                                                <label className="block text-sm font-bold text-slate-700">Solar Capacities</label>
+                                                                <p className="text-xs text-slate-400 mt-0.5">1 KW × 4 units/day × 365 days = <strong>1,460 units/year</strong></p>
+                                                            </div>
+                                                            <button type="button" onClick={addIntroCapacity} className="text-xs flex items-center gap-1 text-blue-600 bg-blue-50 px-3 py-1.5 rounded-lg hover:bg-blue-100 font-semibold">
+                                                                <Plus size={12} /> Add Capacity
+                                                            </button>
+                                                        </div>
+                                                        <div className="space-y-2">
+                                                            {cfg.capacities.map((cap, i) => {
+                                                                const units = Math.round(cap.kw * UNITS_PER_KW_PER_YEAR);
+                                                                return (
+                                                                    <div key={i} className="flex items-center gap-3 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3">
+                                                                        <div className="flex items-center gap-2 flex-1">
+                                                                            <input type="number" min="0.5" step="0.5" value={cap.kw} onChange={e => updateIntroCapacity(i, e.target.value)} className="w-20 px-2 py-1.5 border border-slate-200 rounded-lg text-sm font-mono text-center outline-none focus:border-blue-400" />
+                                                                            <span className="text-sm font-semibold text-slate-600">KW DC</span>
+                                                                        </div>
+                                                                        <div className="flex items-center gap-1.5">
+                                                                            <span className="text-xs text-slate-400">≈</span>
+                                                                            <span className="text-sm font-bold text-emerald-600">{units.toLocaleString("en-IN")}</span>
+                                                                            <span className="text-xs text-slate-400">units/yr</span>
+                                                                        </div>
+                                                                        <button type="button" onClick={() => removeIntroCapacity(i)} className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg"><Minus size={14} /></button>
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                        {cfg.capacities.length === 0 && (
+                                                            <div className="text-center py-5 border-2 border-dashed border-slate-200 rounded-xl">
+                                                                <p className="text-sm text-slate-400">No capacities. Click "+ Add Capacity".</p>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-xs font-semibold text-slate-700 mb-1">Closing Sentence</label>
+                                                        <textarea rows={3} value={cfg.closing || ""} onChange={e => updateIntroConfig("closing", e.target.value)} className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-blue-500" />
+                                                    </div>
+                                                    <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
+                                                        <p className="text-[10px] font-bold text-blue-500 uppercase tracking-wider mb-2">Live Preview — PDF Page 2</p>
+                                                        <p className="text-xs text-slate-500 mb-2 font-semibold">{cfg.salutation}</p>
+                                                        <p className="text-sm text-slate-700 leading-relaxed">{preview || <span className="italic text-slate-400">Preview will appear here...</span>}</p>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })()}
+                                        {formTab === "details" && (
+                                            <div className="grid grid-cols-2 gap-4 mt-4">
+                                                <div className="col-span-2"><h3 className="font-semibold text-slate-800 mb-2 border-b pb-2">Benefits</h3></div>
                                                 <div>
                                                     <label className="block text-xs text-slate-500 mb-1">Benefits Title</label>
                                                     <input type="text" value={formData.benefitsTitle || ""} onChange={(e) => handleFormChange(e, "benefitsTitle")} className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-blue-500" />
@@ -374,8 +497,8 @@ export default function QuotationPreviewModal({ isOpen, lead, onClose, onActivit
                                         )}
 
                                         {formTab === "howItWorks" && (
-                                            <div className="flex flex-col gap-4">
-                                                <h3 className="font-semibold text-slate-800 mb-2 border-b pb-2">How It Works</h3>
+                                            <div className="flex flex-col gap-5">
+                                                <h3 className="font-semibold text-slate-800 border-b pb-2">How It Works</h3>
                                                 <div>
                                                     <label className="block text-xs text-slate-500 mb-1">Paragraph 1 (System Operation)</label>
                                                     <textarea value={formData.howItWorksText1 || ""} onChange={(e) => handleFormChange(e, "howItWorksText1")} className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-blue-500 min-h-[80px]" />
@@ -388,35 +511,39 @@ export default function QuotationPreviewModal({ isOpen, lead, onClose, onActivit
                                                     <label className="block text-xs text-slate-500 mb-1">Paragraph 3 (Testing & Handover)</label>
                                                     <textarea value={formData.howItWorksText3 || ""} onChange={(e) => handleFormChange(e, "howItWorksText3")} className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-blue-500 min-h-[60px]" />
                                                 </div>
-                                            </div>
-                                        )}
-
-                                        {formTab === "images" && (
-                                            <div className="grid grid-cols-2 gap-8">
                                                 <div>
-                                                    <label className="block text-sm font-semibold text-slate-700 mb-2">Diagram Image</label>
+                                                    <label className="block text-sm font-semibold text-slate-700 mb-2">Diagram Image <span className="text-xs font-normal text-slate-400">(How It Works page)</span></label>
                                                     <input type="text" placeholder="Diagram Title" value={formData.diagramTitle || ""} onChange={(e) => handleFormChange(e, "diagramTitle")} className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-blue-500 mb-3" />
-                                                    <div className="border-2 border-dashed border-slate-300 rounded-xl p-4 flex flex-col items-center justify-center text-center hover:bg-slate-50 transition-colors relative h-44">
-                                                        {formData.diagramImage ? (
-                                                            <img src={formData.diagramImage} alt="Diagram" className="max-h-full max-w-full object-contain" />
-                                                        ) : (
-                                                            <><UploadCloud size={28} className="text-slate-400 mb-2" /><span className="text-sm text-slate-500">Click to upload diagram</span></>
-                                                        )}
+                                                    <div className="border-2 border-dashed border-slate-300 rounded-xl p-4 flex flex-col items-center justify-center text-center hover:bg-slate-50 transition-colors relative h-36">
+                                                        {formData.diagramImage ? (<img src={formData.diagramImage} alt="Diagram" className="max-h-full max-w-full object-contain" />) : (<><UploadCloud size={28} className="text-slate-400 mb-2" /><span className="text-sm text-slate-500">Click to upload diagram</span></>)}
                                                         <input type="file" accept="image/*" onChange={(e) => handleUpload(e.target.files[0], "diagramImage")} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
                                                         {uploadingImage === "diagramImage" && <div className="absolute inset-0 bg-white/80 flex items-center justify-center rounded-xl"><Loader2 className="animate-spin text-blue-500" /></div>}
                                                     </div>
                                                 </div>
+
+                                                <hr className="border-slate-200" />
+                                                <h3 className="font-semibold text-slate-800 border-b pb-2">Benefits & Single Line Diagram</h3>
+
                                                 <div>
-                                                    <label className="block text-sm font-semibold text-slate-700 mb-2">Single Line Diagram</label>
-                                                    <div className="border-2 border-dashed border-slate-300 rounded-xl p-4 flex flex-col items-center justify-center text-center hover:bg-slate-50 transition-colors relative h-[244px] mt-0.5">
-                                                        {formData.singleLineImage ? (
-                                                            <img src={formData.singleLineImage} alt="Single Line" className="max-h-full max-w-full object-contain" />
-                                                        ) : (
-                                                            <><UploadCloud size={28} className="text-slate-400 mb-2" /><span className="text-sm text-slate-500">Click to upload single line diagram</span></>
-                                                        )}
+                                                    <label className="block text-sm font-semibold text-slate-700 mb-2">Single Line Diagram <span className="text-xs font-normal text-slate-400">(Benefits page)</span></label>
+                                                    <div className="border-2 border-dashed border-slate-300 rounded-xl p-4 flex flex-col items-center justify-center text-center hover:bg-slate-50 transition-colors relative h-36">
+                                                        {formData.singleLineImage ? (<img src={formData.singleLineImage} alt="Single Line" className="max-h-full max-w-full object-contain" />) : (<><UploadCloud size={28} className="text-slate-400 mb-2" /><span className="text-sm text-slate-500">Click to upload single line diagram</span></>)}
                                                         <input type="file" accept="image/*" onChange={(e) => handleUpload(e.target.files[0], "singleLineImage")} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
                                                         {uploadingImage === "singleLineImage" && <div className="absolute inset-0 bg-white/80 flex items-center justify-center rounded-xl"><Loader2 className="animate-spin text-blue-500" /></div>}
                                                     </div>
+                                                </div>
+                                                <div>
+                                                    <label className="block text-xs text-slate-500 mb-1">Benefits Title</label>
+                                                    <input type="text" value={formData.benefitsTitle || ""} onChange={(e) => handleFormChange(e, "benefitsTitle")} className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-blue-500 mb-2" />
+                                                </div>
+                                                <div className="flex flex-col gap-2">
+                                                    {formData.benefits?.map((benefit, i) => (
+                                                        <div key={i} className="flex gap-2">
+                                                            <input type="text" value={benefit} onChange={(e) => updateArrayRow("benefits", i, null, e.target.value)} className="flex-1 text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-blue-500" />
+                                                            <button onClick={() => removeArrayRow("benefits", i)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg"><Minus size={16} /></button>
+                                                        </div>
+                                                    ))}
+                                                    <button onClick={() => addArrayRow("benefits", "")} className="self-start flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700 font-medium px-2 py-1"><Plus size={16} /> Add Benefit</button>
                                                 </div>
                                             </div>
                                         )}
@@ -466,59 +593,222 @@ export default function QuotationPreviewModal({ isOpen, lead, onClose, onActivit
                                         )}
 
                                         {formTab === "specification" && (
-                                            <div className="flex flex-col gap-4">
-                                                <div className="grid grid-cols-[1fr_1fr_1.5fr_auto] gap-3 mb-2 px-2">
-                                                    <div className="text-xs font-semibold text-slate-500">Parts / Material</div>
-                                                    <div className="text-xs font-semibold text-slate-500">Make</div>
-                                                    <div className="text-xs font-semibold text-slate-500">Specification</div>
-                                                    <div className="w-8"></div>
-                                                </div>
-                                                {formData.materialRows?.map((row, i) => (
-                                                    <div key={i} className="grid grid-cols-[1fr_1fr_1.5fr_auto] gap-3 items-start">
-                                                        <textarea value={row[0]} onChange={(e) => updateArrayRow("materialRows", i, 0, e.target.value)} className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-blue-500 min-h-[60px]" />
-                                                        <textarea value={row[1]} onChange={(e) => updateArrayRow("materialRows", i, 1, e.target.value)} className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-blue-500 min-h-[60px]" />
-                                                        <textarea value={row[2]} onChange={(e) => updateArrayRow("materialRows", i, 2, e.target.value)} className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-blue-500 min-h-[60px]" />
-                                                        <button onClick={() => removeArrayRow("materialRows", i)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg mt-1"><Minus size={18} /></button>
+                                            <div className="flex flex-col gap-6">
+                                                {/* Material Rows */}
+                                                <div>
+                                                    <div className="flex justify-between items-center mb-2">
+                                                        <h3 className="font-semibold text-slate-800">Material Rows</h3>
+                                                        <button onClick={() => addArrayRow("materialRows", ["", "", ""])} className="text-xs flex items-center gap-1 text-blue-600 bg-blue-50 px-3 py-1.5 rounded-lg hover:bg-blue-100 font-semibold"><Plus size={12} /> Add Row</button>
                                                     </div>
-                                                ))}
-                                                <button onClick={() => addArrayRow("materialRows", ["", "", ""])} className="self-start flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700 font-medium px-2 py-1 bg-blue-50 rounded-lg mt-2"><Plus size={16} /> Add Material Row</button>
+                                                    <div className="grid grid-cols-[1fr_1fr_1.5fr_auto] gap-2 mb-1 px-1">
+                                                        {["Parts / Material","Make","Specification",""].map((h,i) => <span key={i} className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">{h}</span>)}
+                                                    </div>
+                                                    <div className="flex flex-col gap-2">
+                                                        {formData.materialRows?.map((row, i) => (
+                                                            <div key={i} className="grid grid-cols-[1fr_1fr_1.5fr_auto] gap-2 items-start">
+                                                                <textarea value={row[0]} onChange={(e) => updateArrayRow("materialRows", i, 0, e.target.value)} className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-blue-500 min-h-[52px]" />
+                                                                <textarea value={row[1]} onChange={(e) => updateArrayRow("materialRows", i, 1, e.target.value)} className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-blue-500 min-h-[52px]" />
+                                                                <textarea value={row[2]} onChange={(e) => updateArrayRow("materialRows", i, 2, e.target.value)} className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-blue-500 min-h-[52px]" />
+                                                                <button onClick={() => removeArrayRow("materialRows", i)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg mt-1"><Minus size={18} /></button>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+
+                                                {/* Financial Rows (merged into Page 4) */}
+                                                {(() => {
+                                                    function toNum(v) { return parseFloat(String(v || "").replace(/,/g, "")) || 0; }
+                                                    function numberToWords(n) {
+                                                        if (!n || isNaN(n)) return "";
+                                                        const num = Math.round(n);
+                                                        const ones = ["","One","Two","Three","Four","Five","Six","Seven","Eight","Nine","Ten","Eleven","Twelve","Thirteen","Fourteen","Fifteen","Sixteen","Seventeen","Eighteen","Nineteen"];
+                                                        const tens = ["","","Twenty","Thirty","Forty","Fifty","Sixty","Seventy","Eighty","Ninety"];
+                                                        function words(n) {
+                                                            if (n < 20) return ones[n];
+                                                            if (n < 100) return tens[Math.floor(n/10)] + (n%10 ? " " + ones[n%10] : "");
+                                                            if (n < 1000) return ones[Math.floor(n/100)] + " Hundred" + (n%100 ? " " + words(n%100) : "");
+                                                            if (n < 100000) return words(Math.floor(n/1000)) + " Thousand" + (n%1000 ? " " + words(n%1000) : "");
+                                                            if (n < 10000000) return words(Math.floor(n/100000)) + " Lakh" + (n%100000 ? " " + words(n%100000) : "");
+                                                            return words(Math.floor(n/10000000)) + " Crore" + (n%10000000 ? " " + words(n%10000000) : "");
+                                                        }
+                                                        return words(num) + " Rupees Only";
+                                                    }
+                                                    const rows = formData.financialRows || [];
+                                                    const computedRows = rows.map(row => { const rate = toNum(row[1]); const disc = toNum(row[3]); return { rate, disc, total: rate, final_: rate - disc }; });
+                                                    const grandTotal = computedRows.reduce((s, r) => s + r.final_, 0);
+                                                    const autoLabel = grandTotal > 0 ? `Rs. ${grandTotal.toLocaleString("en-IN")}/-` : "";
+                                                    const autoWords = numberToWords(grandTotal);
+                                                    function updateFinRow(rIdx, cIdx, val) {
+                                                        const updated = (formData.financialRows || []).map((r, i) => {
+                                                            if (i !== rIdx) return r;
+                                                            const copy = [...r]; copy[cIdx] = val;
+                                                            const rate = toNum(cIdx === 1 ? val : copy[1]); const disc = toNum(cIdx === 3 ? val : copy[3]);
+                                                            copy[2] = rate > 0 ? rate.toLocaleString("en-IN") : copy[2];
+                                                            copy[4] = (rate - disc) >= 0 ? (rate - disc).toLocaleString("en-IN") : "";
+                                                            return copy;
+                                                        });
+                                                        setFormData(p => ({ ...p, financialRows: updated }));
+                                                    }
+                                                    const COLS = [
+                                                        { label: "Description", flex: "flex-[3]", cIdx: 0, editable: true, type: "text" },
+                                                        { label: "Rate (₹)",    flex: "flex-[2]", cIdx: 1, editable: true, type: "number" },
+                                                        { label: "Total",       flex: "flex-[2]", cIdx: 2, editable: false },
+                                                        { label: "Discount",    flex: "flex-[2]", cIdx: 3, editable: true, type: "number" },
+                                                        { label: "Final (₹)",   flex: "flex-[2]", cIdx: 4, editable: false },
+                                                    ];
+                                                    return (
+                                                        <div className="space-y-3">
+                                                            <div className="flex justify-between items-center">
+                                                                <div>
+                                                                    <p className="text-sm font-bold text-slate-700">Financial Rows</p>
+                                                                    <p className="text-xs text-slate-400">Total = Rate · Final = Total − Discount</p>
+                                                                </div>
+                                                                <button onClick={() => addArrayRow("financialRows", ["","","","",""])} className="text-xs flex items-center gap-1 text-blue-600 bg-blue-50 px-3 py-1.5 rounded-lg hover:bg-blue-100 font-semibold"><Plus size={12} /> Add Row</button>
+                                                            </div>
+                                                            <div className="flex gap-2 px-1">
+                                                                {COLS.map(c => <span key={c.cIdx} className={`${c.flex} text-[10px] font-bold text-slate-400 uppercase tracking-wide`}>{c.label}</span>)}
+                                                                <span className="w-8" />
+                                                            </div>
+                                                            <div className="space-y-2">
+                                                                {rows.length === 0 && <div className="text-center py-4 border-2 border-dashed border-slate-200 rounded-xl"><p className="text-sm text-slate-400">No rows. Click "+ Add Row".</p></div>}
+                                                                {rows.map((row, rIdx) => {
+                                                                    const r = computedRows[rIdx];
+                                                                    return (
+                                                                        <div key={rIdx} className="flex gap-2 items-center bg-white border border-slate-100 rounded-xl px-2 py-1.5">
+                                                                            {COLS.map(col => col.editable ? (
+                                                                                <input key={col.cIdx} type={col.type} value={row[col.cIdx] || ""} onChange={e => updateFinRow(rIdx, col.cIdx, e.target.value)} className={`${col.flex} px-2 py-1.5 border border-slate-200 rounded-lg text-sm outline-none focus:border-blue-400`} placeholder={col.label} />
+                                                                            ) : (
+                                                                                <div key={col.cIdx} className={`${col.flex} px-2 py-1.5 rounded-lg text-sm font-semibold text-right ${col.cIdx === 4 ? "text-emerald-600 bg-emerald-50" : "text-slate-500 bg-slate-50"}`}>
+                                                                                    {col.cIdx === 2 ? (r.total > 0 ? r.total.toLocaleString("en-IN") : "—") : (r.final_ >= 0 ? r.final_.toLocaleString("en-IN") : "—")}
+                                                                                </div>
+                                                                            ))}
+                                                                            <button onClick={() => removeArrayRow("financialRows", rIdx)} className="w-8 h-8 flex items-center justify-center text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg"><Minus size={15} /></button>
+                                                                        </div>
+                                                                    );
+                                                                })}
+                                                            </div>
+                                                            {rows.length > 0 && (
+                                                                <div className="flex justify-end">
+                                                                    <div className="bg-blue-600 text-white rounded-xl px-5 py-2.5 flex items-center gap-4">
+                                                                        <span className="text-xs font-semibold opacity-80">Grand Total</span>
+                                                                        <span className="text-lg font-bold">₹ {grandTotal.toLocaleString("en-IN")}</span>
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                            <div className="grid grid-cols-2 gap-4">
+                                                                <div>
+                                                                    <label className="block text-xs font-semibold text-slate-700 mb-1">Amount Label <span className="font-normal text-slate-400">(auto-filled)</span></label>
+                                                                    <input type="text" value={formData.amountLabel || autoLabel} onChange={e => handleFormChange(e, "amountLabel")} placeholder={autoLabel || "Rs. 1,20,000/-"} className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-blue-500" />
+                                                                </div>
+                                                                <div>
+                                                                    <label className="block text-xs font-semibold text-slate-700 mb-1">Amount in Words <span className="font-normal text-slate-400">(auto-filled)</span></label>
+                                                                    <input type="text" value={formData.amountWords || autoWords} onChange={e => handleFormChange(e, "amountWords")} placeholder={autoWords || "One Lakh..."} className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-blue-500" />
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })()}
                                             </div>
                                         )}
 
-                                        {formTab === "financials" && (
-                                            <div className="flex flex-col gap-4">
-                                                <div className="grid grid-cols-[2fr_1fr_1fr_1fr_1fr_auto] gap-3 mb-2 px-2">
-                                                    <div className="text-xs font-semibold text-slate-500">Description</div>
-                                                    <div className="text-xs font-semibold text-slate-500">Rate</div>
-                                                    <div className="text-xs font-semibold text-slate-500">Total</div>
-                                                    <div className="text-xs font-semibold text-slate-500">Discount</div>
-                                                    <div className="text-xs font-semibold text-slate-500">Net Total</div>
-                                                    <div className="w-8"></div>
-                                                </div>
-                                                {formData.financialRows?.map((row, i) => (
-                                                    <div key={i} className="grid grid-cols-[2fr_1fr_1fr_1fr_1fr_auto] gap-3 items-start">
-                                                        <input type="text" value={row[0]} onChange={(e) => updateArrayRow("financialRows", i, 0, e.target.value)} className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-blue-500" />
-                                                        <input type="text" value={row[1]} onChange={(e) => updateArrayRow("financialRows", i, 1, e.target.value)} className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-blue-500" />
-                                                        <input type="text" value={row[2]} onChange={(e) => updateArrayRow("financialRows", i, 2, e.target.value)} className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-blue-500" />
-                                                        <input type="text" value={row[3]} onChange={(e) => updateArrayRow("financialRows", i, 3, e.target.value)} className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-blue-500" />
-                                                        <input type="text" value={row[4]} onChange={(e) => updateArrayRow("financialRows", i, 4, e.target.value)} className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-blue-500" />
-                                                        <button onClick={() => removeArrayRow("financialRows", i)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg"><Minus size={18} /></button>
-                                                    </div>
-                                                ))}
-                                                <button onClick={() => addArrayRow("financialRows", ["", "", "", "", ""])} className="self-start flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700 font-medium px-2 py-1 bg-blue-50 rounded-lg mt-2"><Plus size={16} /> Add Row</button>
+                                        {formTab === "roi" && (() => {
+                                            function toNum(v) { return parseFloat(String(v || "").replace(/,/g, "")) || 0; }
+                                            const rows = formData.financialRows || [];
+                                            const quotedAmount = rows.reduce((s, r) => { const rt = toNum(r[1]); const d = toNum(r[3]); return s + (rt - d); }, 0);
+                                            const govtSubsidy   = toNum(formData.govtSubsidy);
+                                            const actualInvest  = Math.max(0, quotedAmount - govtSubsidy);
+                                            const monthlyBill   = toNum(formData.monthlyBill);
+                                            const annualSavings = monthlyBill * 12;
+                                            const paybackYears  = annualSavings > 0 ? actualInvest / annualSavings : 0;
+                                            const pwY = Math.floor(paybackYears);
+                                            const pwM = Math.round((paybackYears - pwY) * 12);
+                                            const total25 = annualSavings * 25;
+                                            const systemInfo = formData.name || formData.projectName || "Solar Power System";
+                                            const fmt = n => Math.round(n).toLocaleString("en-IN");
+                                            function toLakhs(n) {
+                                                if (n >= 10000000) return `₹${(n/10000000).toFixed(1)} Crore`;
+                                                if (n >= 100000) return `₹${(n/100000).toFixed(1)} Lakhs`;
+                                                return `₹${fmt(n)}`;
+                                            }
 
-                                                <div className="mt-6 border-t pt-4 grid grid-cols-2 gap-4">
-                                                    <div>
-                                                        <label className="block text-xs text-slate-500 mb-1">Amount Label (Total)</label>
-                                                        <input type="text" value={formData.amountLabel || ""} onChange={(e) => handleFormChange(e, "amountLabel")} className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-blue-500 font-bold" />
+                                            return (
+                                                <div className="space-y-5">
+                                                    <div className="flex items-start justify-between gap-3">
+                                                        <div>
+                                                            <h3 className="text-sm font-bold text-slate-800">ROI & SIP Analysis</h3>
+                                                            <p className="text-xs text-slate-400 mt-0.5">Professional client-facing summary · Auto-calculated from financials</p>
+                                                        </div>
+                                                        {renderRoiPdfButton()}
                                                     </div>
-                                                    <div>
-                                                        <label className="block text-xs text-slate-500 mb-1">Amount In Words</label>
-                                                        <input type="text" value={formData.amountWords || ""} onChange={(e) => handleFormChange(e, "amountWords")} className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-blue-500" />
+
+                                                    {/* Inputs */}
+                                                    <div className="grid grid-cols-2 gap-3">
+                                                        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
+                                                            <label className="block text-xs font-bold text-amber-800 mb-1.5">📋 Monthly Electricity Bill (₹)</label>
+                                                            <input type="number" min="0" value={formData.monthlyBill || ""} onChange={e => setFormData(p => ({ ...p, monthlyBill: e.target.value }))} placeholder="e.g. 4000" className="w-full text-sm font-bold border border-amber-300 rounded-lg px-3 py-2 outline-none focus:border-amber-500 bg-white" />
+                                                        </div>
+                                                        <div className="bg-green-50 border border-green-200 rounded-xl p-3">
+                                                            <label className="block text-xs font-bold text-green-800 mb-1.5">🏛️ Govt. Subsidy Amount (₹)</label>
+                                                            <input type="number" min="0" value={formData.govtSubsidy || ""} onChange={e => setFormData(p => ({ ...p, govtSubsidy: e.target.value }))} placeholder="e.g. 78000" className="w-full text-sm font-bold border border-green-300 rounded-lg px-3 py-2 outline-none focus:border-green-500 bg-white" />
+                                                        </div>
                                                     </div>
+
+                                                    {/* Professional Summary Table */}
+                                                    <div className="overflow-x-auto rounded-xl border border-slate-200">
+                                                        <table className="w-full text-sm">
+                                                            <thead>
+                                                                <tr className="bg-blue-600 text-white text-xs">
+                                                                    {["System Info","Monthly Bill","Quoted Amount","Govt. Subsidy","Actual Investment","Estimated ROI"].map(h => (
+                                                                        <th key={h} className="px-3 py-2.5 text-left font-semibold whitespace-nowrap">{h}</th>
+                                                                    ))}
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody>
+                                                                <tr className="bg-slate-50 border-t border-slate-200">
+                                                                    <td className="px-3 py-3 font-semibold text-slate-800 whitespace-nowrap">{systemInfo}</td>
+                                                                    <td className="px-3 py-3 text-blue-700 font-bold">{monthlyBill > 0 ? `₹${fmt(monthlyBill)}/month` : "—"}</td>
+                                                                    <td className="px-3 py-3 text-slate-700 font-semibold">{quotedAmount > 0 ? `₹${fmt(quotedAmount)}` : "—"}</td>
+                                                                    <td className="px-3 py-3 text-emerald-700 font-bold">{govtSubsidy > 0 ? `₹${fmt(govtSubsidy)}` : "—"}</td>
+                                                                    <td className="px-3 py-3 text-orange-700 font-bold">{actualInvest > 0 ? `₹${fmt(actualInvest)}` : "—"}</td>
+                                                                    <td className="px-3 py-3 font-bold text-blue-700">{annualSavings > 0 && actualInvest > 0 ? `${pwY} Yr${pwY !== 1 ? "s" : ""} ${pwM} Mo` : "—"}</td>
+                                                                </tr>
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+
+                                                    {monthlyBill > 0 && actualInvest > 0 && (
+                                                        <div className="space-y-3">
+                                                            {/* Professional Savings Text */}
+                                                            <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
+                                                                <p className="text-xs font-bold text-blue-800 mb-1.5">📊 Professional Savings Summary</p>
+                                                                <p className="text-sm text-slate-700 leading-relaxed">
+                                                                    After approximately <strong>{pwY} Year{pwY !== 1 ? "s" : ""} {pwM} Month{pwM !== 1 ? "s" : ""}</strong>, your solar system can recover its installation cost and start generating estimated savings of around <strong>₹{fmt(monthlyBill)} per month</strong> for the remaining lifespan of the system.
+                                                                </p>
+                                                                <p className="text-sm text-slate-700 leading-relaxed mt-2">
+                                                                    Over 25 years, this may result in an estimated direct electricity bill saving of approximately <strong>{toLakhs(total25)}</strong>.*
+                                                                </p>
+                                                            </div>
+
+                                                            {/* SIP Line */}
+                                                            <div className="bg-purple-50 border border-purple-100 rounded-xl px-4 py-3">
+                                                                <p className="text-xs font-bold text-purple-800 mb-1">📈 Investment Comparison</p>
+                                                                <p className="text-sm text-slate-600 leading-relaxed italic">
+                                                                    If the equivalent monthly savings are invested through SIPs with an assumed average annual return of 12%, the long-term value may become significantly higher over 25 years.*
+                                                                </p>
+                                                            </div>
+
+                                                            {/* Disclaimer Footer */}
+                                                            <div className="bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5">
+                                                                <p className="text-[11px] text-slate-500 leading-relaxed">
+                                                                    * Savings are estimated values based on current electricity tariffs, sunlight conditions, and system performance. Actual results may vary.
+                                                                </p>
+                                                            </div>
+                                                        </div>
+                                                    )}
                                                 </div>
-                                            </div>
-                                        )}
+                                            );
+                                        })()}
+
 
                                         {formTab === "scope" && (
                                             <div className="flex flex-col gap-4">
@@ -573,19 +863,19 @@ export default function QuotationPreviewModal({ isOpen, lead, onClose, onActivit
                 </div>
 
                 {/* ── Footer ── */}
-                <div className="px-6 py-3.5 border-t border-slate-100 flex items-center justify-between shrink-0 bg-white">
+                <div className="px-6 py-3.5 border-t border-slate-100 flex items-center justify-between gap-3 flex-wrap shrink-0 bg-white">
                     <button onClick={onClose} className="px-4 py-2 rounded-xl border border-slate-200 text-slate-500 text-sm font-semibold cursor-pointer hover:bg-slate-50 bg-white transition-all">
                         Close
                     </button>
                     {activeTab === "form" ? (
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center justify-end gap-3 flex-wrap">
                             <p className="text-xs text-slate-400 hidden sm:block">Fill in the form, then preview to generate</p>
                             <button onClick={() => setActiveTab("preview")} className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-blue-500 to-purple-600 text-white text-sm font-bold border-none cursor-pointer hover:-translate-y-0.5 hover:shadow-lg hover:shadow-blue-500/30 transition-all">
                                 <Eye size={15} /> Review &amp; Generate
                             </button>
                         </div>
                     ) : (
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center justify-end gap-2 flex-wrap">
                             <button onClick={() => setActiveTab("form")} className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-slate-200 text-slate-500 text-sm font-semibold bg-white cursor-pointer hover:bg-slate-50 transition-all">
                                 <Edit size={14} /> Edit
                             </button>
