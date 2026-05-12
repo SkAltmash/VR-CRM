@@ -165,7 +165,15 @@ export default function QuotationPreviewModal({ isOpen, lead, onClose, onActivit
 
     useEffect(() => {
         if (isOpen && lead && selectedType && Object.keys(selectedType).length > 0) {
-            setFormData(JSON.parse(JSON.stringify(selectedType)));
+            const initialData = JSON.parse(JSON.stringify(selectedType));
+            // Do not pull Material & Financial from DB. Start fresh every time.
+            initialData.materialRows = [["", "", ""]];
+            initialData.financialRows = [["", "", "", "", ""]];
+            initialData.amountLabel = "";
+            initialData.amountWords = "";
+            initialData.monthlyBill = "";
+            initialData.govtSubsidy = "";
+            setFormData(initialData);
         }
     }, [isOpen, lead, selectedType]);
 
@@ -817,11 +825,11 @@ export default function QuotationPreviewModal({ isOpen, lead, onClose, onActivit
                                                             )}
                                                             <div className="grid grid-cols-2 gap-4">
                                                                 <div>
-                                                                    <label className="block text-xs font-semibold text-slate-700 mb-1">Amount Label <span className="font-normal text-slate-400">(auto-filled)</span></label>
+                                                                    <label className="block text-xs font-semibold text-slate-700 mb-1">Amount Label <span className="font-normal text-slate-400">(auto-filled no need change it )</span></label>
                                                                     <input type="text" value={formData.amountLabel !== undefined ? formData.amountLabel : autoLabel} onChange={e => handleFormChange(e, "amountLabel")} placeholder={autoLabel || "Rs. 1,20,000/-"} className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-blue-500" />
                                                                 </div>
                                                                 <div>
-                                                                    <label className="block text-xs font-semibold text-slate-700 mb-1">Amount in Words <span className="font-normal text-slate-400">(auto-filled)</span></label>
+                                                                    <label className="block text-xs font-semibold text-slate-700 mb-1">Amount in Words <span className="font-normal text-slate-400">(auto-filled no need change it )</span></label>
                                                                     <input type="text" value={formData.amountWords !== undefined ? formData.amountWords : autoWords} onChange={e => handleFormChange(e, "amountWords")} placeholder={autoWords || "One Lakh..."} className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-blue-500" />
                                                                 </div>
                                                             </div>

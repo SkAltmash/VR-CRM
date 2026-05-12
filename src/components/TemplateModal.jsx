@@ -20,8 +20,6 @@ export default function TemplateModal({ isOpen, onClose, template, onSave }) {
             if (template) {
                 const t = JSON.parse(JSON.stringify(template));
                 // Deserialize nested arrays stored as JSON strings in Firestore
-                t.materialRows  = typeof t.materialRows  === "string" ? JSON.parse(t.materialRows)  : (t.materialRows  || [["" ,"",""]]);
-                t.financialRows = typeof t.financialRows === "string" ? JSON.parse(t.financialRows) : (t.financialRows || [["","","","",""]]);
                 setFormData(t);
             } else {
                 setFormData({
@@ -36,8 +34,13 @@ export default function TemplateModal({ isOpen, onClose, template, onSave }) {
                     benefitsTitle: "Benefits", benefits: [""],
                     amountLabel: "", amountWords: "", delivery: "",
                     paymentTerms: [""], clientScope: [""],
-                    materialRows:  [["", "", ""]],
-                    financialRows: [["", "", "", "", ""]],
+                    companyScope: [
+                        "Prepare a full system design to include civil, structural, electrical, and mechanical components, with construction drawings and specifications.",
+                        "Procure equipment and materials and deliver to site.",
+                        "Perform complete system installation.",
+                        "Test all electrical components in accordance with manufacturer instructions.",
+                        "Commission the system to full operability."
+                    ],
                     warranteePanels: "The solar modules are warranted by the solar panel manufacturer for a period of 25 years. Beginning on the Warranty Start Date and terminating on that date, which is one hundred and twenty (120) months thereafter, the warranty of modules and their respective DC connectors and cables, if any, shall be free from material defects in design, materials, and workmanship that affect the performance of the module and shall be covered under service warranty. (\"Limited Product Warranty\"). Material defects shall not include normal wear and tear.",
                     warranteePerformance: "80% efficiency up to 25 years",
                     warranteeInverter: "Inverter comes under complete 5 years of replacement warranty addition warranty can be add by Paying addition charges for the system.",
@@ -119,8 +122,6 @@ export default function TemplateModal({ isOpen, onClose, template, onSave }) {
             const payload = {
                 ...formData,
                 // Firestore doesn't support nested arrays — serialize to JSON strings
-                materialRows:  JSON.stringify(formData.materialRows  || []),
-                financialRows: JSON.stringify(formData.financialRows || []),
                 updatedAt: serverTimestamp()
             };
 
@@ -146,8 +147,6 @@ export default function TemplateModal({ isOpen, onClose, template, onSave }) {
         { id: "general",    label: "Page 1 · Cover" },
         { id: "intro",      label: "Page 2 · Intro" },
         { id: "howItWorks", label: "Page 3 · How It Works & Benefits" },
-        { id: "tables",     label: "Page 4 · Materials & Financials" },
-        { id: "roi",        label: "Page 5 · ROI & SIP" },
         { id: "warrantee",  label: "Page 6 · Warrantee" },
         { id: "scope",      label: "Page 7 · Scope" },
         { id: "terms",      label: "Page 8 · Terms" },
@@ -225,7 +224,6 @@ export default function TemplateModal({ isOpen, onClose, template, onSave }) {
                                     <div><label className="block text-xs font-semibold text-slate-700 mb-1">Project Name (Short)</label><input type="text" required value={formData.projectName || ""} onChange={e => setFormData(p => ({...p, projectName: e.target.value}))} className="w-full px-4 py-2 border rounded-lg text-sm" /></div>
                                     <div><label className="block text-xs font-semibold text-slate-700 mb-1">Project Title (Full)</label><input type="text" required value={formData.projectTitle || ""} onChange={e => setFormData(p => ({...p, projectTitle: e.target.value}))} className="w-full px-4 py-2 border rounded-lg text-sm" /></div>
                                 </div>
-                        <div><label className="block text-xs font-semibold text-slate-700 mb-1">Introduction Text <span className="font-normal text-slate-400">(auto-generated — edit in "Intro / Page 2" tab)</span></label><textarea rows={2} readOnly value={buildIntroPreview(getIntroConfig())} className="w-full px-4 py-2 border rounded-lg text-sm bg-slate-50 text-slate-500 resize-none" /></div>
                             </div>
                         )}
 
@@ -400,261 +398,7 @@ export default function TemplateModal({ isOpen, onClose, template, onSave }) {
                             </div>
                         )}
 
-                        {activeTab === "tables" && (
-                            <div className="space-y-8">
-                                <div>
-                                    <div className="flex justify-between items-center mb-2">
-                                        <label className="block text-sm font-bold text-slate-700">Material Rows (Part | Make | Spec)</label>
-                                        <button type="button" onClick={() => addNestedRow("materialRows", 3)} className="text-xs flex items-center gap-1 text-blue-600 bg-blue-50 px-2 py-1 rounded hover:bg-blue-100"><Plus size={12}/> Add Row</button>
-                                    </div>
-                                    <div className="space-y-2">
-                                        {(formData.materialRows || []).map((row, rIdx) => (
-                                            <div key={rIdx} className="flex gap-2 items-center">
-                                                {[0, 1, 2].map(cIdx => (
-                                                    <input key={cIdx} type="text" value={row[cIdx] || ""} onChange={(e) => handleNestedChange("materialRows", rIdx, cIdx, e.target.value)} className="flex-1 px-3 py-1.5 border rounded-lg text-sm" placeholder={`Column ${cIdx+1}`} />
-                                                ))}
-                                                <button type="button" onClick={() => removeNestedRow("materialRows", rIdx)} className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded"><Trash2 size={16}/></button>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
 
-                                {/* ── Financial Rows with auto-calc ── */}
-                                {(() => {
-                                    // Helpers
-                                    function toNum(v) { return parseFloat(String(v).replace(/,/g, "")) || 0; }
-
-                                    function numberToWords(n) {
-                                        if (!n || isNaN(n)) return "";
-                                        const num = Math.round(n);
-                                        const ones = ["","One","Two","Three","Four","Five","Six","Seven","Eight","Nine","Ten","Eleven","Twelve","Thirteen","Fourteen","Fifteen","Sixteen","Seventeen","Eighteen","Nineteen"];
-                                        const tens = ["","","Twenty","Thirty","Forty","Fifty","Sixty","Seventy","Eighty","Ninety"];
-                                        function words(n) {
-                                            if (n < 20) return ones[n];
-                                            if (n < 100) return tens[Math.floor(n/10)] + (n%10 ? " " + ones[n%10] : "");
-                                            if (n < 1000) return ones[Math.floor(n/100)] + " Hundred" + (n%100 ? " " + words(n%100) : "");
-                                            if (n < 100000) return words(Math.floor(n/1000)) + " Thousand" + (n%1000 ? " " + words(n%1000) : "");
-                                            if (n < 10000000) return words(Math.floor(n/100000)) + " Lakh" + (n%100000 ? " " + words(n%100000) : "");
-                                            return words(Math.floor(n/10000000)) + " Crore" + (n%10000000 ? " " + words(n%10000000) : "");
-                                        }
-                                        return words(num) + " Rupees Only";
-                                    }
-
-                                    const rows = formData.financialRows || [];
-
-                                    // Compute auto values for each row: Total = Rate, Final = Total - Disc
-                                    const computedRows = rows.map(row => {
-                                        const rate = toNum(row[1]);
-                                        const disc = toNum(row[3]);
-                                        const total = rate;
-                                        const final_ = total - disc;
-                                        return { desc: row[0] || "", rate, disc, total, final_ };
-                                    });
-
-                                    const grandTotal = computedRows.reduce((s, r) => s + r.final_, 0);
-                                    const autoLabel  = grandTotal > 0 ? `Rs. ${grandTotal.toLocaleString("en-IN")}/-` : "";
-                                    const autoWords  = numberToWords(grandTotal);
-
-                                    function updateFinRow(rIdx, cIdx, val) {
-                                        const updated = rows.map((r, i) => {
-                                            if (i !== rIdx) return r;
-                                            const copy = [...r];
-                                            copy[cIdx] = val;
-                                            // auto-fill Total (col2) = Rate (col1)
-                                            const rate = toNum(cIdx === 1 ? val : copy[1]);
-                                            const disc = toNum(cIdx === 3 ? val : copy[3]);
-                                            copy[2] = rate > 0 ? rate.toLocaleString("en-IN") : copy[2];
-                                            copy[4] = (rate - disc) > 0 ? (rate - disc).toLocaleString("en-IN") : "";
-                                            return copy;
-                                        });
-                                        setFormData(p => ({ ...p, financialRows: updated }));
-                                    }
-
-                                    const COLS = [
-                                        { label: "Description", flex: "flex-[3]", cIdx: 0, editable: true, type: "text" },
-                                        { label: "Rate (₹)",    flex: "flex-[2]", cIdx: 1, editable: true, type: "number" },
-                                        { label: "Total",       flex: "flex-[2]", cIdx: 2, editable: false },
-                                        { label: "Discount",    flex: "flex-[2]", cIdx: 3, editable: true, type: "number" },
-                                        { label: "Final (₹)",   flex: "flex-[2]", cIdx: 4, editable: false },
-                                    ];
-
-                                    return (
-                                        <div>
-                                            <div className="flex justify-between items-center mb-3">
-                                                <div>
-                                                    <label className="block text-sm font-bold text-slate-700">Financial Rows</label>
-                                                    <p className="text-xs text-slate-400 mt-0.5">Total = Rate &nbsp;·&nbsp; Final = Total − Discount &nbsp;·&nbsp; Grand Total auto-calculated</p>
-                                                </div>
-                                                <button type="button" onClick={() => addNestedRow("financialRows", 5)} className="text-xs flex items-center gap-1 text-blue-600 bg-blue-50 px-3 py-1.5 rounded-lg hover:bg-blue-100 font-semibold"><Plus size={12}/> Add Row</button>
-                                            </div>
-
-                                            {/* Header */}
-                                            <div className="flex gap-2 mb-1 px-1">
-                                                {COLS.map(c => <span key={c.cIdx} className={`${c.flex} text-[10px] font-bold text-slate-400 uppercase tracking-wide`}>{c.label}</span>)}
-                                                <span className="w-8" />
-                                            </div>
-
-                                            {/* Rows */}
-                                            <div className="space-y-2">
-                                                {rows.length === 0 && (
-                                                    <div className="text-center py-6 border-2 border-dashed border-slate-200 rounded-xl">
-                                                        <p className="text-sm text-slate-400">No rows yet. Click "+ Add Row".</p>
-                                                    </div>
-                                                )}
-                                                {rows.map((row, rIdx) => {
-                                                    const r = computedRows[rIdx];
-                                                    return (
-                                                        <div key={rIdx} className="flex gap-2 items-center bg-white border border-slate-100 rounded-xl px-2 py-1.5">
-                                                            {COLS.map(col => (
-                                                                col.editable ? (
-                                                                    <input
-                                                                        key={col.cIdx}
-                                                                        type={col.type}
-                                                                        value={row[col.cIdx] || ""}
-                                                                        onChange={e => updateFinRow(rIdx, col.cIdx, e.target.value)}
-                                                                        className={`${col.flex} px-2 py-1.5 border border-slate-200 rounded-lg text-sm outline-none focus:border-blue-400`}
-                                                                        placeholder={col.label}
-                                                                    />
-                                                                ) : (
-                                                                    <div key={col.cIdx} className={`${col.flex} px-2 py-1.5 rounded-lg text-sm font-semibold ${col.cIdx === 4 ? "text-emerald-600 bg-emerald-50" : "text-slate-500 bg-slate-50"} text-right`}>
-                                                                        {col.cIdx === 2 ? (r.total > 0 ? r.total.toLocaleString("en-IN") : "—") : (r.final_ >= 0 ? r.final_.toLocaleString("en-IN") : "—")}
-                                                                    </div>
-                                                                )
-                                                            ))}
-                                                            <button type="button" onClick={() => removeNestedRow("financialRows", rIdx)} className="w-8 h-8 flex items-center justify-center text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg shrink-0"><Trash2 size={15}/></button>
-                                                        </div>
-                                                    );
-                                                })}
-                                            </div>
-
-                                            {/* Grand Total Bar */}
-                                            {rows.length > 0 && (
-                                                <div className="mt-3 flex justify-end">
-                                                    <div className="bg-blue-600 text-white rounded-xl px-5 py-2.5 flex items-center gap-4">
-                                                        <span className="text-xs font-semibold opacity-80">Grand Total</span>
-                                                        <span className="text-lg font-bold">₹ {grandTotal.toLocaleString("en-IN")}</span>
-                                                    </div>
-                                                </div>
-                                            )}
-
-                                            {/* Amount fields — auto-filled but overridable */}
-                                            <div className="grid grid-cols-2 gap-4 mt-4">
-                                                <div>
-                                                    <label className="block text-xs font-semibold text-slate-700 mb-1">Amount Label <span className="font-normal text-slate-400">(auto-filled)</span></label>
-                                                    <input
-                                                        type="text"
-                                                        value={formData.amountLabel || autoLabel}
-                                                        onChange={e => setFormData(p => ({...p, amountLabel: e.target.value}))}
-                                                        placeholder={autoLabel || "e.g. Rs. 1,20,000/-"}
-                                                        className="w-full px-4 py-2 border rounded-lg text-sm"
-                                                    />
-                                                </div>
-                                                <div>
-                                                    <label className="block text-xs font-semibold text-slate-700 mb-1">Amount in Words <span className="font-normal text-slate-400">(auto-filled)</span></label>
-                                                    <input
-                                                        type="text"
-                                                        value={formData.amountWords || autoWords}
-                                                        onChange={e => setFormData(p => ({...p, amountWords: e.target.value}))}
-                                                        placeholder={autoWords || "e.g. One Lakh Twenty Thousand Rupees Only"}
-                                                        className="w-full px-4 py-2 border rounded-lg text-sm"
-                                                    />
-                                                </div>
-                                            </div>
-                                        </div>
-                                    );
-                                })()}
-                            </div>
-                        )}
-
-                        {activeTab === "roi" && (() => {
-                            function toNum(v) { return parseFloat(String(v || "").replace(/,/g, "")) || 0; }
-                            const rows = formData.financialRows || [];
-                            const quotedAmount  = rows.reduce((s, r) => { const rt = toNum(r[1]); const d = toNum(r[3]); return s + (rt - d); }, 0);
-                            const govtSubsidy   = toNum(formData.govtSubsidy);
-                            const actualInvest  = Math.max(0, quotedAmount - govtSubsidy);
-                            const monthlyBill   = toNum(formData.monthlyBill);
-                            const annualSavings = monthlyBill * 12;
-                            const paybackYears  = annualSavings > 0 ? actualInvest / annualSavings : 0;
-                            const pwY = Math.floor(paybackYears);
-                            const pwM = Math.round((paybackYears - pwY) * 12);
-                            const total25 = annualSavings * 25;
-                            const systemInfo = formData.name || formData.projectName || "Solar Power System";
-                            const fmt = n => Math.round(n).toLocaleString("en-IN");
-                            function toLakhs(n) {
-                                if (n >= 10000000) return `₹${(n/10000000).toFixed(1)} Crore`;
-                                if (n >= 100000) return `₹${(n/100000).toFixed(1)} Lakhs`;
-                                return `₹${fmt(n)}`;
-                            }
-
-                            return (
-                                <div className="space-y-5">
-                                    <div>
-                                        <h3 className="text-sm font-bold text-slate-800">ROI & SIP Analysis</h3>
-                                        <p className="text-xs text-slate-400 mt-0.5">Professional client-facing summary · Auto-calculated from financials</p>
-                                    </div>
-
-                                    {/* Inputs */}
-                                    <div className="grid grid-cols-2 gap-3">
-                                        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
-                                            <label className="block text-xs font-bold text-amber-800 mb-1.5">📋 Monthly Electricity Bill (₹)</label>
-                                            <input type="number" min="0" value={formData.monthlyBill || ""} onChange={e => setFormData(p => ({ ...p, monthlyBill: e.target.value }))} placeholder="e.g. 4000" className="w-full text-sm font-bold border border-amber-300 rounded-lg px-3 py-2 outline-none focus:border-amber-500 bg-white" />
-                                        </div>
-                                        <div className="bg-green-50 border border-green-200 rounded-xl p-3">
-                                            <label className="block text-xs font-bold text-green-800 mb-1.5">🏛️ Govt. Subsidy Amount (₹)</label>
-                                            <input type="number" min="0" value={formData.govtSubsidy || ""} onChange={e => setFormData(p => ({ ...p, govtSubsidy: e.target.value }))} placeholder="e.g. 78000" className="w-full text-sm font-bold border border-green-300 rounded-lg px-3 py-2 outline-none focus:border-green-500 bg-white" />
-                                        </div>
-                                    </div>
-
-                                    {/* Professional Summary Table */}
-                                    <div className="overflow-x-auto rounded-xl border border-slate-200">
-                                        <table className="w-full text-sm">
-                                            <thead>
-                                                <tr className="bg-blue-600 text-white text-xs">
-                                                    {["System Info","Monthly Bill","Quoted Amount","Govt. Subsidy","Actual Investment","Estimated ROI"].map(h => (
-                                                        <th key={h} className="px-3 py-2.5 text-left font-semibold whitespace-nowrap">{h}</th>
-                                                    ))}
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                <tr className="bg-slate-50">
-                                                    <td className="px-3 py-3 font-semibold text-slate-800 whitespace-nowrap">{systemInfo}</td>
-                                                    <td className="px-3 py-3 text-blue-700 font-bold">{monthlyBill > 0 ? `₹${fmt(monthlyBill)}/month` : "—"}</td>
-                                                    <td className="px-3 py-3 text-slate-700 font-semibold">{quotedAmount > 0 ? `₹${fmt(quotedAmount)}` : "—"}</td>
-                                                    <td className="px-3 py-3 text-emerald-700 font-bold">{govtSubsidy > 0 ? `₹${fmt(govtSubsidy)}` : "—"}</td>
-                                                    <td className="px-3 py-3 text-orange-700 font-bold">{actualInvest > 0 ? `₹${fmt(actualInvest)}` : "—"}</td>
-                                                    <td className="px-3 py-3 font-bold text-blue-700">{annualSavings > 0 && actualInvest > 0 ? `${pwY} Yr${pwY !== 1 ? "s" : ""} ${pwM} Mo` : "—"}</td>
-                                                </tr>
-                                            </tbody>
-                                        </table>
-                                    </div>
-
-                                    {monthlyBill > 0 && actualInvest > 0 && (
-                                        <div className="space-y-3">
-                                            <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
-                                                <p className="text-xs font-bold text-blue-800 mb-1.5">📊 Professional Savings Summary</p>
-                                                <p className="text-sm text-slate-700 leading-relaxed">
-                                                    After approximately <strong>{pwY} Year{pwY !== 1 ? "s" : ""} {pwM} Month{pwM !== 1 ? "s" : ""}</strong>, your solar system can recover its installation cost and start generating estimated savings of around <strong>₹{fmt(monthlyBill)} per month</strong> for the remaining lifespan of the system.
-                                                </p>
-                                                <p className="text-sm text-slate-700 leading-relaxed mt-2">
-                                                    Over 25 years, this may result in an estimated direct electricity bill saving of approximately <strong>{toLakhs(total25)}</strong>.*
-                                                </p>
-                                            </div>
-                                            <div className="bg-purple-50 border border-purple-100 rounded-xl px-4 py-3">
-                                                <p className="text-xs font-bold text-purple-800 mb-1">📈 Investment Comparison</p>
-                                                <p className="text-sm text-slate-600 leading-relaxed italic">
-                                                    If the equivalent monthly savings are invested through SIPs with an assumed average annual return of 12%, the long-term value may become significantly higher over 25 years.*
-                                                </p>
-                                            </div>
-                                            <div className="bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5">
-                                                <p className="text-[11px] text-slate-500 leading-relaxed">
-                                                    * Savings are estimated values based on current electricity tariffs, sunlight conditions, and system performance. Actual results may vary.
-                                                </p>
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-                            );
-                        })()}
 
                         {activeTab === "scope" && (
                             <div className="space-y-4">
@@ -669,6 +413,20 @@ export default function TemplateModal({ isOpen, onClose, template, onSave }) {
                                             <div key={i} className="flex gap-2">
                                                 <input type="text" value={item} onChange={e => handleArrayChange("clientScope", i, e.target.value)} className="flex-1 px-3 py-1.5 border rounded-lg text-sm" />
                                                 <button type="button" onClick={() => removeArrayItem("clientScope", i)} className="p-1.5 text-red-400 hover:text-red-600 bg-white rounded border border-slate-200"><Trash2 size={16}/></button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                                <div className="mt-6 border-t border-slate-200 pt-6">
+                                    <div className="flex justify-between items-center mb-2">
+                                        <label className="block text-sm font-bold text-slate-700">Company Scope</label>
+                                        <button type="button" onClick={() => addArrayItem("companyScope")} className="text-xs flex items-center gap-1 text-blue-600 bg-blue-50 px-2 py-1 rounded hover:bg-blue-100"><Plus size={12}/> Add Item</button>
+                                    </div>
+                                    <div className="space-y-2">
+                                        {(formData.companyScope || []).map((item, i) => (
+                                            <div key={i} className="flex gap-2">
+                                                <input type="text" value={item} onChange={e => handleArrayChange("companyScope", i, e.target.value)} className="flex-1 px-3 py-1.5 border rounded-lg text-sm" />
+                                                <button type="button" onClick={() => removeArrayItem("companyScope", i)} className="p-1.5 text-red-400 hover:text-red-600 bg-white rounded border border-slate-200"><Trash2 size={16}/></button>
                                             </div>
                                         ))}
                                     </div>
