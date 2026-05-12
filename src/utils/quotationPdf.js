@@ -258,23 +258,24 @@ function buildPageOne(doc, lead, type, logoDataUrl, settings, pageNumber = 1, pa
     y += 28;
 
     doc.setFontSize(9.5);
-    doc.text(`Quotation - ${getQuotationNo(lead, type)}`, MARGIN_X, y);
+    doc.text(type.quotationNumber || `Quotation - ${getQuotationNo(lead, type)}`, MARGIN_X, y);
     doc.setFont("helvetica", "normal");
-    doc.text(formatDate(today), PAGE_WIDTH - MARGIN_X, y, { align: "right" });
+    doc.text(type.preparationDate || formatDate(today), PAGE_WIDTH - MARGIN_X, y, { align: "right" });
     y += 16;
-    doc.text("Issue Version - V.1", PAGE_WIDTH - MARGIN_X, y, { align: "right" });
+    doc.text(`Issue Version - ${type.issueVersion || "V.1"}`, PAGE_WIDTH - MARGIN_X, y, { align: "right" });
     y += 28;
 
-    const customerName = safeText(lead.name, "Customer");
+    const customerName = type.customerName || safeText(lead.name, "Customer");
     const place = safeText(lead.company || lead.source);
+    const customerTo = type.customerTo || (place ? `${customerName}, ${place}` : customerName);
     doc.setFont("helvetica", "normal");
     doc.setFontSize(10);
     doc.text("To,", MARGIN_X, y);
     y += 16;
-    doc.text(place ? `${customerName}, ${place}` : customerName, MARGIN_X, y);
+    doc.text(customerTo, MARGIN_X, y);
     y += 16;
-    if (lead.phone) {
-        doc.text(safeText(lead.phone), MARGIN_X, y);
+    if (type.customerMobile || lead.phone) {
+        doc.text(type.customerMobile || safeText(lead.phone), MARGIN_X, y);
         y += 26;
     }
 
@@ -284,7 +285,8 @@ function buildPageOne(doc, lead, type, logoDataUrl, settings, pageNumber = 1, pa
 
     y = sectionTitle(doc, "Statement of Confidentiality", y);
     const cname = settings.companyName || "our company";
-    y = paragraph(doc, `These documents contain proprietary trade secret and confidential information to be used solely for evaluating ${cname}. The information contained herein is to be considered confidential. Customer, by receiving these documents agrees that neither this document nor the information disclosed herein, nor any part thereof, shall be reproduced or transferred to other documents or used or disclosed to others for any purpose except as specifically authorized in writing by ${cname}.`, y, { lineHeight: 14 });
+    const confText = type.confidentialityText || `These documents contain proprietary trade secret and confidential information to be used solely for evaluating ${cname}. The information contained herein is to be considered confidential. Customer, by receiving these documents agrees that neither this document nor the information disclosed herein, nor any part thereof, shall be reproduced or transferred to other documents or used or disclosed to others for any purpose except as specifically authorized in writing by ${cname}.`;
+    y = paragraph(doc, confText, y, { lineHeight: 14 });
 
     y += 14;
     autoTable(doc, {
@@ -292,8 +294,8 @@ function buildPageOne(doc, lead, type, logoDataUrl, settings, pageNumber = 1, pa
         margin: { left: MARGIN_X, right: MARGIN_X },
         theme: "plain",
         body: [
-            ["Project:-", type.projectName, "Prepared By:", settings.companyName || ""],
-            ["Preparation Date:-", formatDate(today), "Quotation Type:", type.name],
+            ["Project:-", type.projectName, "Prepared By:", type.preparedBy || settings.companyName || ""],
+            ["Preparation Date:-", type.preparationDate || formatDate(today), "Quotation Type:", type.name],
         ],
         styles: { fontSize: 9.5, cellPadding: 4, textColor: [51, 65, 85] },
         columnStyles: {
@@ -330,22 +332,24 @@ function buildPageTwo(doc, type, logoDataUrl, settings, pageNumber = 2, pageCoun
     y = paragraph(doc, introText, y, { lineHeight: 14 });
 
 
-    if (settings.aboutText) {
+    const aboutText = type.aboutText !== undefined ? type.aboutText : settings.aboutText;
+    if (aboutText) {
         y = sectionTitle(doc, "About us:-", y + 4);
-        y = paragraph(doc, settings.aboutText, y, { lineHeight: 14 });
+        y = paragraph(doc, aboutText, y, { lineHeight: 14 });
     }
 
-    if (settings.expertiseList && settings.expertiseList.length > 0) {
+    const expertiseList = type.expertiseList !== undefined ? type.expertiseList : settings.expertiseList;
+    if (expertiseList && expertiseList.length > 0) {
         y = paragraph(doc, "Our areas of expertise include the following:", y + 8, { bold: true, after: 8 });
-        y = bulletList(doc, settings.expertiseList, y);
+        y = bulletList(doc, expertiseList, y);
     }
 
-    y = paragraph(doc, "Why us:-", y + 12, { bold: true, after: 8 });
-    y = paragraph(doc, "Top quality, maximum performance, and custom-made design.", y, { lineHeight: 14 });
+    y = paragraph(doc, type.whyUsTitle || "Why us:-", y + 12, { bold: true, after: 8 });
+    y = paragraph(doc, type.whyUsText1 || "Top quality, maximum performance, and custom-made design.", y, { lineHeight: 14 });
     const companyName = settings.companyName || "Our company";
-    y = paragraph(doc, `All components of a ${companyName} power plant are subject to the strictest testing requirements. The solar panels, invertors, and associated components are tested to withstand extreme environmental conditions to ensure reliability and maximum power output.`, y, { lineHeight: 14 });
+    y = paragraph(doc, type.whyUsText2 || `All components of a ${companyName} power plant are subject to the strictest testing requirements. The solar panels, invertors, and associated components are tested to withstand extreme environmental conditions to ensure reliability and maximum power output.`, y, { lineHeight: 14 });
     
-    paragraph(doc, "Solar energy helps the country for better environment with Green Energy.", y + 8, { bold: true });
+    paragraph(doc, type.whyUsText3 || "Solar energy helps the country for better environment with Green Energy.", y + 8, { bold: true });
 }
 
 function buildPageThree(doc, type, logoDataUrl, diagramImageDataUrl, singleLineImageDataUrl, settings, pageNumber = 3, pageCount = PAGE_COUNT) {
@@ -527,19 +531,9 @@ function buildPageSix(doc, logoDataUrl, settings, type, warranteeImageDataUrl, p
     }
 }
 
-function buildPageSeven(doc, logoDataUrl, settings, pageNumber = 7, pageCount = PAGE_COUNT) {
+function buildPageSeven(doc, logoDataUrl, settings, type = {}, pageNumber = 7, pageCount = PAGE_COUNT) {
     let y = addPage(doc, pageNumber, logoDataUrl, settings, pageCount);
-    y = sectionTitle(doc, `${settings.companyName || "Company"} Scope of work:-`, y);
-    y = bulletList(doc, [
-        "Prepare a full system design to include civil, structural, electrical, and mechanical components, with construction drawings and specifications.",
-        "Procure equipment and materials and deliver to site.",
-        "Perform complete system installation.",
-        "Test all electrical components in accordance with manufacturer instructions.",
-        "Commission the system to full operability.",
-    ], y);
-
-    y = sectionTitle(doc, "Client scope:-", y + 10);
-    bulletList(doc, [
+    const defaultClientScope = [
         "Provide all the papers and documentation required for approval or net metering where applicable.",
         "Provide a suitable and secure space for storage of equipment and materials.",
         "Provide permission and approval for project execution.",
@@ -549,7 +543,26 @@ function buildPageSeven(doc, logoDataUrl, settings, pageNumber = 7, pageCount = 
         "Providing labor manpower at the site if required.",
         "Additional ladder to access the roof if required.",
         "Core cutting if the earthing location has RCC surface.",
-    ], y);
+    ];
+    const clientScope = Array.isArray(type.clientScope)
+        ? type.clientScope.map(item => safeText(item)).filter(Boolean)
+        : [];
+
+    const companyScope = Array.isArray(type.companyScope)
+        ? type.companyScope.map(item => safeText(item)).filter(Boolean)
+        : [
+            "Prepare a full system design to include civil, structural, electrical, and mechanical components, with construction drawings and specifications.",
+            "Procure equipment and materials and deliver to site.",
+            "Perform complete system installation.",
+            "Test all electrical components in accordance with manufacturer instructions.",
+            "Commission the system to full operability.",
+        ];
+
+    y = sectionTitle(doc, `${settings.companyName || "Company"} Scope of work:-`, y);
+    y = bulletList(doc, companyScope, y);
+
+    y = sectionTitle(doc, "Client scope:-", y + 10);
+    bulletList(doc, clientScope.length > 0 ? clientScope : defaultClientScope, y);
 }
 
 function buildPageEight(doc, type, logoDataUrl, settings, pageNumber = 8, pageCount = PAGE_COUNT) {
@@ -566,21 +579,23 @@ function buildPageEight(doc, type, logoDataUrl, settings, pageNumber = 8, pageCo
     y = paragraph(doc, "Bank Details:-", y + 8, { bold: true, after: 8 });
 
     // Build rows from bankAccounts array, fall back to legacy flat fields
-    const bankRows = Array.isArray(settings.bankAccounts) && settings.bankAccounts.length > 0
-        ? settings.bankAccounts.map(acc => [
-            acc.bankName || "",
-            acc.accountName || "",
-            acc.accountNumber || "",
-            acc.ifscCode || "",
-            acc.branch || "",
-        ])
-        : [[
-            settings.bankName || "",
-            settings.accountName || "",
-            settings.accountNumber || "",
-            settings.ifscCode || "",
-            settings.branch || "",
-        ]];
+    const sourceBankAccounts = type.bankAccounts !== undefined 
+        ? type.bankAccounts 
+        : (Array.isArray(settings.bankAccounts) && settings.bankAccounts.length > 0 ? settings.bankAccounts : [{
+            bankName: settings.bankName || "",
+            accountName: settings.accountName || "",
+            accountNumber: settings.accountNumber || "",
+            ifscCode: settings.ifscCode || "",
+            branch: settings.branch || "",
+        }]);
+
+    const bankRows = sourceBankAccounts.map(acc => [
+        acc.bankName || "",
+        acc.accountName || "",
+        acc.accountNumber || "",
+        acc.ifscCode || "",
+        acc.branch || "",
+    ]);
 
     autoTable(doc, {
         startY: y,
@@ -645,7 +660,7 @@ export async function createQuotationPdf(lead, formData) {
         buildPageFive(doc, type, logoDataUrl, settings, pageNumber++, pageCount);
     }
     buildPageSix(doc, logoDataUrl, settings, type, warranteeImageDataUrl, pageNumber++, pageCount);
-    buildPageSeven(doc, logoDataUrl, settings, pageNumber++, pageCount);
+    buildPageSeven(doc, logoDataUrl, settings, type, pageNumber++, pageCount);
     buildPageEight(doc, type, logoDataUrl, settings, pageNumber, pageCount);
 
     return { doc, type };

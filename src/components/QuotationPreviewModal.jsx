@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { X, Download, MessageCircle, Loader2, FileText, Plus, Minus, Eye, Edit, Zap, UploadCloud, CheckCircle2 } from "lucide-react";
-import { collection, getDocs, query, orderBy } from "firebase/firestore";
+import { collection, doc as firestoreDoc, getDoc, getDocs, query, orderBy } from "firebase/firestore";
 import { db } from "../../firebase";
 import { createQuotationFile, createQuotationPreviewUrl, downloadQuotationPdf } from "../utils/quotationPdf";
 import toast from "react-hot-toast";
@@ -8,8 +8,25 @@ import toast from "react-hot-toast";
 const CLOUD_NAME = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
 const UPLOAD_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
 
+function formatPreviewDate(date = new Date()) {
+    return date.toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" });
+}
+
+function getPreviewQuotationNo(lead, type) {
+    const now = new Date();
+    const yy = String(now.getFullYear()).slice(-2);
+    const phone = String(lead?.phone || "").replace(/\D/g, "");
+    const suffix = phone.slice(-4) || String(Date.now()).slice(-4);
+    return `Q${yy}${suffix}-${type?.id ? type.id.toUpperCase().slice(0, 3) : "NEW"}`;
+}
+
+function cleanList(items) {
+    return Array.isArray(items) ? items.map(item => String(item || "").trim()).filter(Boolean) : [];
+}
+
 export default function QuotationPreviewModal({ isOpen, lead, onClose, onActivity }) {
     const [templates, setTemplates] = useState([]);
+    const [settings, setSettings] = useState({});
     const [fetching, setFetching] = useState(true);
     const [selectedTypeId, setSelectedTypeId] = useState(null);
     const [previewUrl, setPreviewUrl] = useState("");
@@ -21,14 +38,14 @@ export default function QuotationPreviewModal({ isOpen, lead, onClose, onActivit
     const [uploadingImage, setUploadingImage] = useState(false);
 
     const FORM_TABS = [
-        { id: "details",       label: "1 · Cover" },
-        { id: "intro",         label: "2 · Intro" },
-        { id: "howItWorks",    label: "3 · How It Works & Benefits" },
-        { id: "specification", label: "4 · Materials & Financials" },
-        { id: "roi",           label: "5 · ROI & SIP" },
-        { id: "warrantee",     label: "6 · Warrantee" },
-        { id: "scope",         label: "7 · Scope" },
-        { id: "terms",         label: "8 · Terms" },
+        { id: "details",       label: " 1 · Cover" },
+        { id: "intro",         label: " 2 · Intro / About" },
+        { id: "howItWorks",    label: " 3 · How It Works & Benefits" },
+        { id: "specification", label: " 4 · Materials & Financials" },
+        { id: "roi",           label: " 5 · ROI & SIP" },
+        { id: "warrantee",     label: " 6 · Warrantee" },
+        { id: "scope",         label: " 7 · Scope" },
+        { id: "terms",         label: " 8 · Terms" },
     ];
 
     // ── Intro helpers ─────────────────────────────────────────────
@@ -117,6 +134,22 @@ export default function QuotationPreviewModal({ isOpen, lead, onClose, onActivit
             })
             .finally(() => {
                 if (isMounted) setFetching(false);
+            });
+
+        return () => { isMounted = false; };
+    }, [isOpen]);
+
+    useEffect(() => {
+        if (!isOpen) return;
+        let isMounted = true;
+
+        getDoc(firestoreDoc(db, "settings", "branding"))
+            .then((snap) => {
+                if (isMounted && snap.exists()) setSettings(snap.data());
+            })
+            .catch((err) => {
+                console.error("Failed to load quotation settings:", err);
+                if (isMounted) setSettings({});
             });
 
         return () => { isMounted = false; };
@@ -322,8 +355,18 @@ export default function QuotationPreviewModal({ isOpen, lead, onClose, onActivit
         );
     }
 
+    const companyName = settings.companyName || "our company";
+    const preparedBy = settings.companyName || "";
+    const customerName = lead.name || "Customer";
+    const customerPlace = lead.company || lead.source || "";
+    const customerLine = customerPlace ? `${customerName}, ${customerPlace}` : customerName;
+    const todayLabel = formatPreviewDate();
+    const confidentialityText = `These documents contain proprietary trade secret and confidential information to be used solely for evaluating ${companyName}. The information contained herein is to be considered confidential. Customer, by receiving these documents agrees that neither this document nor the information disclosed herein, nor any part thereof, shall be reproduced or transferred to other documents or used or disclosed to others for any purpose except as specifically authorized in writing by ${companyName}.`;
+    const expertiseList = cleanList(settings.expertiseList);
+    const clientScopeItems = cleanList(formData.clientScope);
+
     return (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={onClose}>
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 " onClick={onClose}>
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl h-[90vh] flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
                 {/* ── Header ── */}
                 <div className="flex items-center justify-between px-6 py-3.5 border-b border-slate-100 bg-white shrink-0">
@@ -385,11 +428,11 @@ export default function QuotationPreviewModal({ isOpen, lead, onClose, onActivit
                     </aside>
 
                     {/* ── Main Content ── */}
-                    <section className="min-h-0 flex flex-col bg-slate-50/50">
+                    <section className="min-h-0 min-w-0 flex flex-col bg-slate-50/50">
                         {activeTab === "form" ? (
-                            <div className="flex-1 flex flex-col min-h-0">
+                            <div className="flex-1 flex flex-col min-h-0 min-w-0">
                                 {/* Sub-tab bar */}
-                                <div className="border-b border-slate-100 bg-white px-5 flex gap-1 overflow-x-auto shrink-0">
+                                <div className="border-b border-slate-100 bg-white px-5 flex gap-1 overflow-x-auto overflow-y-hidden scrollbar-hide shrink-0 max-w-full">
                                     {FORM_TABS.map((tab) => (
                                         <button key={tab.id} onClick={() => setFormTab(tab.id)}
                                             className={`whitespace-nowrap px-3 py-3 text-[13px] font-semibold border-b-2 transition-all ${formTab === tab.id ? "border-blue-500 text-blue-600" : "border-transparent text-slate-400 hover:text-slate-600"
@@ -400,19 +443,73 @@ export default function QuotationPreviewModal({ isOpen, lead, onClose, onActivit
                                 <div className="flex-1 overflow-y-auto p-5">
                                     <div className="bg-white rounded-2xl border border-slate-100 p-6 shadow-sm">
                                         {formTab === "details" && (
-                                            <div className="grid grid-cols-2 gap-4">
-                                                <div className="col-span-2"><h3 className="font-semibold text-slate-800 mb-2 border-b pb-2">Project Information</h3></div>
+                                            <div className="space-y-5">
                                                 <div>
-                                                    <label className="block text-xs text-slate-500 mb-1">Project Title</label>
-                                                    <input type="text" value={formData.projectTitle || ""} onChange={(e) => handleFormChange(e, "projectTitle")} className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-blue-500" />
+                                                    <h3 className="font-semibold text-slate-800 mb-2 border-b pb-2">PDF Page 1 · Cover Details</h3>
+                                                    <div className="grid grid-cols-2 max-md:grid-cols-1 gap-4">
+                                                        <div>
+                                                            <label className="block text-xs text-slate-500 mb-1">Customer Name</label>
+                                                            <input type="text" value={formData.customerName !== undefined ? formData.customerName : customerName} onChange={e => handleFormChange(e, "customerName")} className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-blue-500" />
+                                                        </div>
+                                                        <div>
+                                                            <label className="block text-xs text-slate-500 mb-1">Mobile Number</label>
+                                                            <input type="text" value={formData.customerMobile !== undefined ? formData.customerMobile : (lead.phone || "No phone")} onChange={e => handleFormChange(e, "customerMobile")} className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-blue-500" />
+                                                        </div>
+                                                        <div>
+                                                            <label className="block text-xs text-slate-500 mb-1">Quotation Number</label>
+                                                            <input type="text" value={formData.quotationNumber !== undefined ? formData.quotationNumber : `Quotation - ${getPreviewQuotationNo(lead, formData)}`} onChange={e => handleFormChange(e, "quotationNumber")} className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-blue-500" />
+                                                        </div>
+                                                        <div>
+                                                            <label className="block text-xs text-slate-500 mb-1">Preparation Date</label>
+                                                            <input type="text" value={formData.preparationDate !== undefined ? formData.preparationDate : todayLabel} onChange={e => handleFormChange(e, "preparationDate")} className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-blue-500" />
+                                                        </div>
+                                                        <div>
+                                                            <label className="block text-xs text-slate-500 mb-1">To</label>
+                                                            <input type="text" value={formData.customerTo !== undefined ? formData.customerTo : customerLine} onChange={e => handleFormChange(e, "customerTo")} className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-blue-500" />
+                                                        </div>
+                                                        <div>
+                                                            <label className="block text-xs text-slate-500 mb-1">Issue Version</label>
+                                                            <input type="text" value={formData.issueVersion !== undefined ? formData.issueVersion : "V.1"} onChange={e => handleFormChange(e, "issueVersion")} className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-blue-500" />
+                                                        </div>
+                                                    </div>
                                                 </div>
+
+                                                <div className="grid grid-cols-2 max-md:grid-cols-1 gap-4">
+                                                    <div>
+                                                        <label className="block text-xs text-slate-500 mb-1">Project Title</label>
+                                                        <input type="text" value={formData.projectTitle || ""} onChange={(e) => handleFormChange(e, "projectTitle")} className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-blue-500" />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-xs text-slate-500 mb-1">Project Name</label>
+                                                        <input type="text" value={formData.projectName || ""} onChange={(e) => handleFormChange(e, "projectName")} className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-blue-500" />
+                                                    </div>
+                                                </div>
+
                                                 <div>
-                                                    <label className="block text-xs text-slate-500 mb-1">Project Name</label>
-                                                    <input type="text" value={formData.projectName || ""} onChange={(e) => handleFormChange(e, "projectName")} className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-blue-500" />
+                                                    <label className="block text-xs font-semibold text-slate-700 mb-1">Statement of Confidentiality</label>
+                                                    <textarea rows={4} value={formData.confidentialityText !== undefined ? formData.confidentialityText : confidentialityText} onChange={e => handleFormChange(e, "confidentialityText")} className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-blue-500 resize-none leading-relaxed" />
                                                 </div>
-                                                <div className="col-span-2">
-                                                    <label className="block text-xs text-slate-500 mb-1">Introduction <span className="text-slate-400">(auto-generated — edit in "Intro / Page 2" tab)</span></label>
-                                                    <textarea readOnly rows={2} value={buildIntroPreview(getIntroConfig())} className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none bg-slate-50 text-slate-400 resize-none" />
+
+                                                <div>
+                                                    <h3 className="font-semibold text-slate-800 mb-2 border-b pb-2">Project Summary Table</h3>
+                                                    <div className="grid grid-cols-2 max-md:grid-cols-1 gap-3 text-sm">
+                                                        <div className="rounded-lg border border-slate-200 p-3 bg-slate-50">
+                                                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Project</p>
+                                                            <p className="mt-1 font-semibold text-slate-700">{formData.projectName || "Not set"}</p>
+                                                        </div>
+                                                        <div className="rounded-lg border border-slate-200 p-3 bg-white">
+                                                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1">Prepared By</p>
+                                                            <input type="text" value={formData.preparedBy !== undefined ? formData.preparedBy : (preparedBy || "Not set")} onChange={e => handleFormChange(e, "preparedBy")} className="w-full text-sm border border-slate-200 rounded px-2 py-1 outline-none focus:border-blue-500" />
+                                                        </div>
+                                                        <div className="rounded-lg border border-slate-200 p-3 bg-slate-50">
+                                                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Preparation Date</p>
+                                                            <p className="mt-1 font-semibold text-slate-700">{todayLabel}</p>
+                                                        </div>
+                                                        <div className="rounded-lg border border-slate-200 p-3 bg-slate-50">
+                                                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Quotation Type</p>
+                                                            <p className="mt-1 font-semibold text-slate-700">{formData.name || "Template"}</p>
+                                                        </div>
+                                                    </div>
                                                 </div>
                                             </div>
                                         )}
@@ -474,31 +571,54 @@ export default function QuotationPreviewModal({ isOpen, lead, onClose, onActivit
                                                         <p className="text-xs text-slate-500 mb-2 font-semibold">{cfg.salutation}</p>
                                                         <p className="text-sm text-slate-700 leading-relaxed">{preview || <span className="italic text-slate-400">Preview will appear here...</span>}</p>
                                                     </div>
+
+                                                    <div className="border-t border-slate-200 pt-5 space-y-4">
+                                                        <div>
+                                                            <h3 className="font-semibold text-slate-800 mb-2">About us:-</h3>
+                                                            <textarea rows={4} value={formData.aboutText !== undefined ? formData.aboutText : (settings.aboutText || "About us content is printed from Settings. Add it in Settings to show it in the PDF.")} onChange={e => handleFormChange(e, "aboutText")} className="w-full text-sm border border-slate-200 rounded-xl px-3 py-2 outline-none focus:border-blue-500 leading-relaxed"></textarea>
+                                                        </div>
+
+                                                        <div>
+                                                            <h3 className="font-semibold text-slate-800 mb-2">Our areas of expertise include the following:</h3>
+                                                            <div className="space-y-2">
+                                                                {(formData.expertiseList !== undefined ? formData.expertiseList : expertiseList).map((item, i) => (
+                                                                    <div key={i} className="flex gap-2">
+                                                                        <input type="text" value={item} onChange={(e) => {
+                                                                            const newArr = [...(formData.expertiseList !== undefined ? formData.expertiseList : expertiseList)];
+                                                                            newArr[i] = e.target.value;
+                                                                            setFormData({ ...formData, expertiseList: newArr });
+                                                                        }} className="flex-1 text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-blue-500" />
+                                                                        <button onClick={() => {
+                                                                            const newArr = [...(formData.expertiseList !== undefined ? formData.expertiseList : expertiseList)];
+                                                                            newArr.splice(i, 1);
+                                                                            setFormData({ ...formData, expertiseList: newArr });
+                                                                        }} className="p-2 text-red-500 hover:bg-red-50 rounded-lg"><Minus size={16} /></button>
+                                                                    </div>
+                                                                ))}
+                                                                <button onClick={() => {
+                                                                    const newArr = [...(formData.expertiseList !== undefined ? formData.expertiseList : expertiseList), ""];
+                                                                    setFormData({ ...formData, expertiseList: newArr });
+                                                                }} className="self-start flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700 font-medium px-2 py-1 bg-blue-50 rounded-lg"><Plus size={16} /> Add Expertise</button>
+                                                            </div>
+                                                        </div>
+
+                                                        <div>
+                                                            <h3 className="font-semibold text-slate-800 mb-2 mt-4">Why us:-</h3>
+                                                            <div className="space-y-3">
+                                                                <input type="text" placeholder="Title (e.g. Why us:-)" value={formData.whyUsTitle !== undefined ? formData.whyUsTitle : "Why us:-"} onChange={e => handleFormChange(e, "whyUsTitle")} className="w-full font-semibold text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-blue-500 bg-slate-50" />
+                                                                <textarea rows={2} value={formData.whyUsText1 !== undefined ? formData.whyUsText1 : "Top quality, maximum performance, and custom-made design."} onChange={e => handleFormChange(e, "whyUsText1")} className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-blue-500" />
+                                                                <textarea rows={3} value={formData.whyUsText2 !== undefined ? formData.whyUsText2 : `All components of a ${settings.companyName || "company"} power plant are subject to the strictest testing requirements. The solar panels, invertors, and associated components are tested to withstand extreme environmental conditions to ensure reliability and maximum power output.`} onChange={e => handleFormChange(e, "whyUsText2")} className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-blue-500" />
+                                                                <input type="text" value={formData.whyUsText3 !== undefined ? formData.whyUsText3 : "Solar energy helps the country for better environment with Green Energy."} onChange={e => handleFormChange(e, "whyUsText3")} className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-blue-500" />
+                                                            </div>
+                                                        </div>
+                                                    </div>
                                                 </div>
                                             );
                                         })()}
-                                        {formTab === "details" && (
-                                            <div className="grid grid-cols-2 gap-4 mt-4">
-                                                <div className="col-span-2"><h3 className="font-semibold text-slate-800 mb-2 border-b pb-2">Benefits</h3></div>
-                                                <div>
-                                                    <label className="block text-xs text-slate-500 mb-1">Benefits Title</label>
-                                                    <input type="text" value={formData.benefitsTitle || ""} onChange={(e) => handleFormChange(e, "benefitsTitle")} className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-blue-500" />
-                                                </div>
-                                                <div className="col-span-2 flex flex-col gap-2">
-                                                    {formData.benefits?.map((benefit, i) => (
-                                                        <div key={i} className="flex gap-2">
-                                                            <input type="text" value={benefit} onChange={(e) => updateArrayRow("benefits", i, null, e.target.value)} className="flex-1 text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-blue-500" />
-                                                            <button onClick={() => removeArrayRow("benefits", i)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg"><Minus size={16} /></button>
-                                                        </div>
-                                                    ))}
-                                                    <button onClick={() => addArrayRow("benefits", "")} className="self-start flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700 font-medium px-2 py-1"><Plus size={16} /> Add Benefit</button>
-                                                </div>
-                                            </div>
-                                        )}
 
                                         {formTab === "howItWorks" && (
                                             <div className="flex flex-col gap-5">
-                                                <h3 className="font-semibold text-slate-800 border-b pb-2">How It Works</h3>
+                                                <h3 className="font-semibold text-slate-800 border-b pb-2">PDF Page 3 · How It Works</h3>
                                                 <div>
                                                     <label className="block text-xs text-slate-500 mb-1">Paragraph 1 (System Operation)</label>
                                                     <textarea value={formData.howItWorksText1 || ""} onChange={(e) => handleFormChange(e, "howItWorksText1")} className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-blue-500 min-h-[80px]" />
@@ -512,7 +632,7 @@ export default function QuotationPreviewModal({ isOpen, lead, onClose, onActivit
                                                     <textarea value={formData.howItWorksText3 || ""} onChange={(e) => handleFormChange(e, "howItWorksText3")} className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-blue-500 min-h-[60px]" />
                                                 </div>
                                                 <div>
-                                                    <label className="block text-sm font-semibold text-slate-700 mb-2">Diagram Image <span className="text-xs font-normal text-slate-400">(How It Works page)</span></label>
+                                                    <label className="block text-sm font-semibold text-slate-700 mb-2">Diagram Image <span className="text-xs font-normal text-slate-400">(PDF Page 3)</span></label>
                                                     <input type="text" placeholder="Diagram Title" value={formData.diagramTitle || ""} onChange={(e) => handleFormChange(e, "diagramTitle")} className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-blue-500 mb-3" />
                                                     <div className="border-2 border-dashed border-slate-300 rounded-xl p-4 flex flex-col items-center justify-center text-center hover:bg-slate-50 transition-colors relative h-36">
                                                         {formData.diagramImage ? (<img src={formData.diagramImage} alt="Diagram" className="max-h-full max-w-full object-contain" />) : (<><UploadCloud size={28} className="text-slate-400 mb-2" /><span className="text-sm text-slate-500">Click to upload diagram</span></>)}
@@ -525,7 +645,7 @@ export default function QuotationPreviewModal({ isOpen, lead, onClose, onActivit
                                                 <h3 className="font-semibold text-slate-800 border-b pb-2">Benefits & Single Line Diagram</h3>
 
                                                 <div>
-                                                    <label className="block text-sm font-semibold text-slate-700 mb-2">Single Line Diagram <span className="text-xs font-normal text-slate-400">(Benefits page)</span></label>
+                                                    <label className="block text-sm font-semibold text-slate-700 mb-2">Single Line Diagram <span className="text-xs font-normal text-slate-400">(PDF Page 3)</span></label>
                                                     <div className="border-2 border-dashed border-slate-300 rounded-xl p-4 flex flex-col items-center justify-center text-center hover:bg-slate-50 transition-colors relative h-36">
                                                         {formData.singleLineImage ? (<img src={formData.singleLineImage} alt="Single Line" className="max-h-full max-w-full object-contain" />) : (<><UploadCloud size={28} className="text-slate-400 mb-2" /><span className="text-sm text-slate-500">Click to upload single line diagram</span></>)}
                                                         <input type="file" accept="image/*" onChange={(e) => handleUpload(e.target.files[0], "singleLineImage")} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
@@ -698,11 +818,11 @@ export default function QuotationPreviewModal({ isOpen, lead, onClose, onActivit
                                                             <div className="grid grid-cols-2 gap-4">
                                                                 <div>
                                                                     <label className="block text-xs font-semibold text-slate-700 mb-1">Amount Label <span className="font-normal text-slate-400">(auto-filled)</span></label>
-                                                                    <input type="text" value={formData.amountLabel || autoLabel} onChange={e => handleFormChange(e, "amountLabel")} placeholder={autoLabel || "Rs. 1,20,000/-"} className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-blue-500" />
+                                                                    <input type="text" value={formData.amountLabel !== undefined ? formData.amountLabel : autoLabel} onChange={e => handleFormChange(e, "amountLabel")} placeholder={autoLabel || "Rs. 1,20,000/-"} className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-blue-500" />
                                                                 </div>
                                                                 <div>
                                                                     <label className="block text-xs font-semibold text-slate-700 mb-1">Amount in Words <span className="font-normal text-slate-400">(auto-filled)</span></label>
-                                                                    <input type="text" value={formData.amountWords || autoWords} onChange={e => handleFormChange(e, "amountWords")} placeholder={autoWords || "One Lakh..."} className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-blue-500" />
+                                                                    <input type="text" value={formData.amountWords !== undefined ? formData.amountWords : autoWords} onChange={e => handleFormChange(e, "amountWords")} placeholder={autoWords || "One Lakh..."} className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-blue-500" />
                                                                 </div>
                                                             </div>
                                                         </div>
@@ -811,15 +931,71 @@ export default function QuotationPreviewModal({ isOpen, lead, onClose, onActivit
 
 
                                         {formTab === "scope" && (
-                                            <div className="flex flex-col gap-4">
-                                                <h3 className="font-semibold text-slate-800 mb-2 border-b pb-2">Client Scope</h3>
-                                                {formData.clientScope?.map((scope, i) => (
-                                                    <div key={i} className="flex gap-2">
-                                                        <input type="text" value={scope} onChange={(e) => updateArrayRow("clientScope", i, null, e.target.value)} className="flex-1 text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-blue-500" />
-                                                        <button onClick={() => removeArrayRow("clientScope", i)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg"><Minus size={18} /></button>
+                                            <div className="flex flex-col gap-5">
+                                                <div>
+                                                    <div className="flex justify-between items-center mb-2 border-b pb-2">
+                                                        <h3 className="font-semibold text-slate-800">PDF Page 7 · {settings.companyName || "Company"} Scope of work:-</h3>
+                                                        <button onClick={() => {
+                                                            const current = formData.companyScope !== undefined ? formData.companyScope : [
+                                                                "Prepare a full system design to include civil, structural, electrical, and mechanical components, with construction drawings and specifications.",
+                                                                "Procure equipment and materials and deliver to site.",
+                                                                "Perform complete system installation.",
+                                                                "Test all electrical components in accordance with manufacturer instructions.",
+                                                                "Commission the system to full operability.",
+                                                            ];
+                                                            setFormData({ ...formData, companyScope: [...current, ""] });
+                                                        }} className="text-xs flex items-center gap-1 text-blue-600 bg-blue-50 px-2 py-1 rounded hover:bg-blue-100 font-semibold"><Plus size={12} /> Add</button>
                                                     </div>
-                                                ))}
-                                                <button onClick={() => addArrayRow("clientScope", "")} className="self-start flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700 font-medium px-2 py-1 bg-blue-50 rounded-lg"><Plus size={16} /> Add Scope</button>
+                                                    <div className="grid grid-cols-1 gap-2 text-sm text-slate-600">
+                                                        {(formData.companyScope !== undefined ? formData.companyScope : [
+                                                            "Prepare a full system design to include civil, structural, electrical, and mechanical components, with construction drawings and specifications.",
+                                                            "Procure equipment and materials and deliver to site.",
+                                                            "Perform complete system installation.",
+                                                            "Test all electrical components in accordance with manufacturer instructions.",
+                                                            "Commission the system to full operability.",
+                                                        ]).map((item, i) => (
+                                                            <div key={i} className="flex gap-2">
+                                                                <input type="text" value={item} onChange={e => {
+                                                                    const current = formData.companyScope !== undefined ? formData.companyScope : [
+                                                                        "Prepare a full system design to include civil, structural, electrical, and mechanical components, with construction drawings and specifications.",
+                                                                        "Procure equipment and materials and deliver to site.",
+                                                                        "Perform complete system installation.",
+                                                                        "Test all electrical components in accordance with manufacturer instructions.",
+                                                                        "Commission the system to full operability.",
+                                                                    ];
+                                                                    const newScope = [...current];
+                                                                    newScope[i] = e.target.value;
+                                                                    setFormData({ ...formData, companyScope: newScope });
+                                                                }} className="flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 outline-none focus:border-blue-500" />
+                                                                <button onClick={() => {
+                                                                    const current = formData.companyScope !== undefined ? formData.companyScope : [
+                                                                        "Prepare a full system design to include civil, structural, electrical, and mechanical components, with construction drawings and specifications.",
+                                                                        "Procure equipment and materials and deliver to site.",
+                                                                        "Perform complete system installation.",
+                                                                        "Test all electrical components in accordance with manufacturer instructions.",
+                                                                        "Commission the system to full operability.",
+                                                                    ];
+                                                                    const newScope = [...current];
+                                                                    newScope.splice(i, 1);
+                                                                    setFormData({ ...formData, companyScope: newScope });
+                                                                }} className="p-2 text-red-500 hover:bg-red-50 rounded-lg"><Minus size={18} /></button>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                                <div className="flex flex-col gap-3">
+                                                    <h3 className="font-semibold text-slate-800 mb-1 border-b pb-2">Client scope:-</h3>
+                                                    {clientScopeItems.length === 0 && (
+                                                        <p className="text-sm text-slate-400 italic">No custom client scope points added. The PDF will use its default client scope list.</p>
+                                                    )}
+                                                    {formData.clientScope?.map((scope, i) => (
+                                                        <div key={i} className="flex gap-2">
+                                                            <input type="text" value={scope} onChange={(e) => updateArrayRow("clientScope", i, null, e.target.value)} className="flex-1 text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-blue-500" />
+                                                            <button onClick={() => removeArrayRow("clientScope", i)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg"><Minus size={18} /></button>
+                                                        </div>
+                                                    ))}
+                                                    <button onClick={() => addArrayRow("clientScope", "")} className="self-start flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700 font-medium px-2 py-1 bg-blue-50 rounded-lg"><Plus size={16} /> Add Scope</button>
+                                                </div>
                                             </div>
                                         )}
 
@@ -837,6 +1013,41 @@ export default function QuotationPreviewModal({ isOpen, lead, onClose, onActivit
                                                 <div className="mt-2">
                                                     <label className="block text-xs font-semibold text-slate-800 mb-1">Delivery Info</label>
                                                     <textarea value={formData.delivery || ""} onChange={(e) => handleFormChange(e, "delivery")} className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-blue-500 min-h-[80px]" />
+                                                </div>
+
+                                                <h3 className="font-semibold text-slate-800 mb-2 border-b pb-2 mt-4">Bank Details</h3>
+                                                <div className="flex flex-col gap-3">
+                                                    {(() => {
+                                                        const banks = formData.bankAccounts !== undefined ? formData.bankAccounts : (settings.bankAccounts || [{
+                                                            bankName: settings.bankName || "",
+                                                            accountName: settings.accountName || "",
+                                                            accountNumber: settings.accountNumber || "",
+                                                            ifscCode: settings.ifscCode || "",
+                                                            branch: settings.branch || "",
+                                                        }]);
+                                                        return (
+                                                            <>
+                                                                {banks.map((acc, i) => (
+                                                                    <div key={i} className="grid grid-cols-2 gap-3 bg-white border border-slate-200 p-4 rounded-xl relative">
+                                                                        <button onClick={() => {
+                                                                            const newBanks = [...banks];
+                                                                            newBanks.splice(i, 1);
+                                                                            setFormData({ ...formData, bankAccounts: newBanks });
+                                                                        }} className="absolute -top-2 -right-2 bg-red-100 text-red-600 rounded-full p-1 hover:bg-red-200 shadow-sm"><X size={14} /></button>
+                                                                        
+                                                                        <div><label className="text-[10px] text-slate-500 font-bold uppercase mb-1 block">Bank Name</label><input type="text" value={acc.bankName} onChange={e => { const nb = [...banks]; nb[i] = {...nb[i], bankName: e.target.value}; setFormData({ ...formData, bankAccounts: nb }); }} className="w-full text-sm border border-slate-200 rounded px-2 py-1.5 outline-none" /></div>
+                                                                        <div><label className="text-[10px] text-slate-500 font-bold uppercase mb-1 block">Account Name</label><input type="text" value={acc.accountName} onChange={e => { const nb = [...banks]; nb[i] = {...nb[i], accountName: e.target.value}; setFormData({ ...formData, bankAccounts: nb }); }} className="w-full text-sm border border-slate-200 rounded px-2 py-1.5 outline-none" /></div>
+                                                                        <div><label className="text-[10px] text-slate-500 font-bold uppercase mb-1 block">Account Number</label><input type="text" value={acc.accountNumber} onChange={e => { const nb = [...banks]; nb[i] = {...nb[i], accountNumber: e.target.value}; setFormData({ ...formData, bankAccounts: nb }); }} className="w-full text-sm border border-slate-200 rounded px-2 py-1.5 outline-none" /></div>
+                                                                        <div><label className="text-[10px] text-slate-500 font-bold uppercase mb-1 block">IFSC Code</label><input type="text" value={acc.ifscCode} onChange={e => { const nb = [...banks]; nb[i] = {...nb[i], ifscCode: e.target.value}; setFormData({ ...formData, bankAccounts: nb }); }} className="w-full text-sm border border-slate-200 rounded px-2 py-1.5 outline-none" /></div>
+                                                                        <div className="col-span-2"><label className="text-[10px] text-slate-500 font-bold uppercase mb-1 block">Branch</label><input type="text" value={acc.branch} onChange={e => { const nb = [...banks]; nb[i] = {...nb[i], branch: e.target.value}; setFormData({ ...formData, bankAccounts: nb }); }} className="w-full text-sm border border-slate-200 rounded px-2 py-1.5 outline-none" /></div>
+                                                                    </div>
+                                                                ))}
+                                                                <button onClick={() => {
+                                                                    setFormData({ ...formData, bankAccounts: [...banks, { bankName: "", accountName: "", accountNumber: "", ifscCode: "", branch: "" }] });
+                                                                }} className="self-start flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700 font-medium px-3 py-1.5 bg-blue-50 rounded-lg"><Plus size={16} /> Add Bank Account</button>
+                                                            </>
+                                                        );
+                                                    })()}
                                                 </div>
                                             </div>
                                         )}
