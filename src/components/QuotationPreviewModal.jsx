@@ -38,14 +38,14 @@ export default function QuotationPreviewModal({ isOpen, lead, onClose, onActivit
     const [uploadingImage, setUploadingImage] = useState(false);
 
     const FORM_TABS = [
-        { id: "details",       label: " 1 · Cover" },
-        { id: "intro",         label: " 2 · Intro / About" },
-        { id: "howItWorks",    label: " 3 · How It Works & Benefits" },
+        { id: "details", label: " 1 · Cover" },
+        { id: "intro", label: " 2 · Intro / About" },
+        { id: "howItWorks", label: " 3 · How It Works & Benefits" },
         { id: "specification", label: " 4 · Materials & Financials" },
-        { id: "roi",           label: " 5 · ROI & SIP" },
-        { id: "warrantee",     label: " 6 · Warrantee" },
-        { id: "scope",         label: " 7 · Scope" },
-        { id: "terms",         label: " 8 · Terms" },
+        { id: "roi", label: " 5 · ROI & SIP" },
+        { id: "warrantee", label: " 6 · Warrantee" },
+        { id: "scope", label: " 7 · Scope" },
+        { id: "terms", label: " 8 · Terms" },
     ];
 
     // ── Intro helpers ─────────────────────────────────────────────
@@ -54,7 +54,7 @@ export default function QuotationPreviewModal({ isOpen, lead, onClose, onActivit
     function getIntroConfig() {
         return formData.introConfig || {
             salutation: "Respected Sir,",
-            capacities: [{ kw: 3 }],
+            capacities: [{}],
             closing: "This proposal has been designed as per the detailed analysis of the site and is based on your electricity bill calculation and the space available.",
             projectType: "Net-Metering based Rooftop PV Solar Power Plant"
         };
@@ -347,7 +347,7 @@ export default function QuotationPreviewModal({ isOpen, lead, onClose, onActivit
                 className={`flex items-center gap-1.5 rounded-xl border text-sm font-semibold cursor-pointer transition-all ${compact ? "min-w-[86px] justify-center px-3 py-2" : "px-3.5 py-2"} ${includeRoiInPdf
                     ? "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
                     : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50"
-                }`}
+                    }`}
             >
                 {includeRoiInPdf ? <CheckCircle2 size={14} /> : <FileText size={14} />}
                 {label}
@@ -721,7 +721,7 @@ export default function QuotationPreviewModal({ isOpen, lead, onClose, onActivit
                                                         <button onClick={() => addArrayRow("materialRows", ["", "", ""])} className="text-xs flex items-center gap-1 text-blue-600 bg-blue-50 px-3 py-1.5 rounded-lg hover:bg-blue-100 font-semibold"><Plus size={12} /> Add Row</button>
                                                     </div>
                                                     <div className="grid grid-cols-[1fr_1fr_1.5fr_auto] gap-2 mb-1 px-1">
-                                                        {["Parts / Material","Make","Specification",""].map((h,i) => <span key={i} className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">{h}</span>)}
+                                                        {["Parts / Material", "Make", "Specification", ""].map((h, i) => <span key={i} className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">{h}</span>)}
                                                     </div>
                                                     <div className="flex flex-col gap-2">
                                                         {formData.materialRows?.map((row, i) => (
@@ -741,15 +741,15 @@ export default function QuotationPreviewModal({ isOpen, lead, onClose, onActivit
                                                     function numberToWords(n) {
                                                         if (!n || isNaN(n)) return "";
                                                         const num = Math.round(n);
-                                                        const ones = ["","One","Two","Three","Four","Five","Six","Seven","Eight","Nine","Ten","Eleven","Twelve","Thirteen","Fourteen","Fifteen","Sixteen","Seventeen","Eighteen","Nineteen"];
-                                                        const tens = ["","","Twenty","Thirty","Forty","Fifty","Sixty","Seventy","Eighty","Ninety"];
+                                                        const ones = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen"];
+                                                        const tens = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"];
                                                         function words(n) {
                                                             if (n < 20) return ones[n];
-                                                            if (n < 100) return tens[Math.floor(n/10)] + (n%10 ? " " + ones[n%10] : "");
-                                                            if (n < 1000) return ones[Math.floor(n/100)] + " Hundred" + (n%100 ? " " + words(n%100) : "");
-                                                            if (n < 100000) return words(Math.floor(n/1000)) + " Thousand" + (n%1000 ? " " + words(n%1000) : "");
-                                                            if (n < 10000000) return words(Math.floor(n/100000)) + " Lakh" + (n%100000 ? " " + words(n%100000) : "");
-                                                            return words(Math.floor(n/10000000)) + " Crore" + (n%10000000 ? " " + words(n%10000000) : "");
+                                                            if (n < 100) return tens[Math.floor(n / 10)] + (n % 10 ? " " + ones[n % 10] : "");
+                                                            if (n < 1000) return ones[Math.floor(n / 100)] + " Hundred" + (n % 100 ? " " + words(n % 100) : "");
+                                                            if (n < 100000) return words(Math.floor(n / 1000)) + " Thousand" + (n % 1000 ? " " + words(n % 1000) : "");
+                                                            if (n < 10000000) return words(Math.floor(n / 100000)) + " Lakh" + (n % 100000 ? " " + words(n % 100000) : "");
+                                                            return words(Math.floor(n / 10000000)) + " Crore" + (n % 10000000 ? " " + words(n % 10000000) : "");
                                                         }
                                                         return words(num) + " Rupees Only";
                                                     }
@@ -771,10 +771,10 @@ export default function QuotationPreviewModal({ isOpen, lead, onClose, onActivit
                                                     }
                                                     const COLS = [
                                                         { label: "Description", flex: "flex-[3]", cIdx: 0, editable: true, type: "text" },
-                                                        { label: "Rate (₹)",    flex: "flex-[2]", cIdx: 1, editable: true, type: "number" },
-                                                        { label: "Total",       flex: "flex-[2]", cIdx: 2, editable: false },
-                                                        { label: "Discount",    flex: "flex-[2]", cIdx: 3, editable: true, type: "number" },
-                                                        { label: "Final (₹)",   flex: "flex-[2]", cIdx: 4, editable: false },
+                                                        { label: "Rate (₹)", flex: "flex-[2]", cIdx: 1, editable: true, type: "number" },
+                                                        { label: "Total", flex: "flex-[2]", cIdx: 2, editable: false },
+                                                        { label: "Discount", flex: "flex-[2]", cIdx: 3, editable: true, type: "number" },
+                                                        { label: "Final (₹)", flex: "flex-[2]", cIdx: 4, editable: false },
                                                     ];
                                                     return (
                                                         <div className="space-y-3">
@@ -783,7 +783,7 @@ export default function QuotationPreviewModal({ isOpen, lead, onClose, onActivit
                                                                     <p className="text-sm font-bold text-slate-700">Financial Rows</p>
                                                                     <p className="text-xs text-slate-400">Total = Rate · Final = Total − Discount</p>
                                                                 </div>
-                                                                <button onClick={() => addArrayRow("financialRows", ["","","","",""])} className="text-xs flex items-center gap-1 text-blue-600 bg-blue-50 px-3 py-1.5 rounded-lg hover:bg-blue-100 font-semibold"><Plus size={12} /> Add Row</button>
+                                                                <button onClick={() => addArrayRow("financialRows", ["", "", "", "", ""])} className="text-xs flex items-center gap-1 text-blue-600 bg-blue-50 px-3 py-1.5 rounded-lg hover:bg-blue-100 font-semibold"><Plus size={12} /> Add Row</button>
                                                             </div>
                                                             <div className="flex gap-2 px-1">
                                                                 {COLS.map(c => <span key={c.cIdx} className={`${c.flex} text-[10px] font-bold text-slate-400 uppercase tracking-wide`}>{c.label}</span>)}
@@ -835,19 +835,19 @@ export default function QuotationPreviewModal({ isOpen, lead, onClose, onActivit
                                             function toNum(v) { return parseFloat(String(v || "").replace(/,/g, "")) || 0; }
                                             const rows = formData.financialRows || [];
                                             const quotedAmount = rows.reduce((s, r) => { const rt = toNum(r[1]); const d = toNum(r[3]); return s + (rt - d); }, 0);
-                                            const govtSubsidy   = toNum(formData.govtSubsidy);
-                                            const actualInvest  = Math.max(0, quotedAmount - govtSubsidy);
-                                            const monthlyBill   = toNum(formData.monthlyBill);
+                                            const govtSubsidy = toNum(formData.govtSubsidy);
+                                            const actualInvest = Math.max(0, quotedAmount - govtSubsidy);
+                                            const monthlyBill = toNum(formData.monthlyBill);
                                             const annualSavings = monthlyBill * 12;
-                                            const paybackYears  = annualSavings > 0 ? actualInvest / annualSavings : 0;
+                                            const paybackYears = annualSavings > 0 ? actualInvest / annualSavings : 0;
                                             const pwY = Math.floor(paybackYears);
                                             const pwM = Math.round((paybackYears - pwY) * 12);
                                             const total25 = annualSavings * 25;
                                             const systemInfo = formData.name || formData.projectName || "Solar Power System";
                                             const fmt = n => Math.round(n).toLocaleString("en-IN");
                                             function toLakhs(n) {
-                                                if (n >= 10000000) return `₹${(n/10000000).toFixed(1)} Crore`;
-                                                if (n >= 100000) return `₹${(n/100000).toFixed(1)} Lakhs`;
+                                                if (n >= 10000000) return `₹${(n / 10000000).toFixed(1)} Crore`;
+                                                if (n >= 100000) return `₹${(n / 100000).toFixed(1)} Lakhs`;
                                                 return `₹${fmt(n)}`;
                                             }
 
@@ -878,7 +878,7 @@ export default function QuotationPreviewModal({ isOpen, lead, onClose, onActivit
                                                         <table className="w-full text-sm">
                                                             <thead>
                                                                 <tr className="bg-blue-600 text-white text-xs">
-                                                                    {["System Info","Monthly Bill","Quoted Amount","Govt. Subsidy","Actual Investment","Estimated ROI"].map(h => (
+                                                                    {["System Info", "Monthly Bill", "Quoted Amount", "Govt. Subsidy", "Actual Investment", "Estimated ROI"].map(h => (
                                                                         <th key={h} className="px-3 py-2.5 text-left font-semibold whitespace-nowrap">{h}</th>
                                                                     ))}
                                                                 </tr>
@@ -1034,12 +1034,12 @@ export default function QuotationPreviewModal({ isOpen, lead, onClose, onActivit
                                                                             newBanks.splice(i, 1);
                                                                             setFormData({ ...formData, bankAccounts: newBanks });
                                                                         }} className="absolute -top-2 -right-2 bg-red-100 text-red-600 rounded-full p-1 hover:bg-red-200 shadow-sm"><X size={14} /></button>
-                                                                        
-                                                                        <div><label className="text-[10px] text-slate-500 font-bold uppercase mb-1 block">Bank Name</label><input type="text" value={acc.bankName} onChange={e => { const nb = [...banks]; nb[i] = {...nb[i], bankName: e.target.value}; setFormData({ ...formData, bankAccounts: nb }); }} className="w-full text-sm border border-slate-200 rounded px-2 py-1.5 outline-none" /></div>
-                                                                        <div><label className="text-[10px] text-slate-500 font-bold uppercase mb-1 block">Account Name</label><input type="text" value={acc.accountName} onChange={e => { const nb = [...banks]; nb[i] = {...nb[i], accountName: e.target.value}; setFormData({ ...formData, bankAccounts: nb }); }} className="w-full text-sm border border-slate-200 rounded px-2 py-1.5 outline-none" /></div>
-                                                                        <div><label className="text-[10px] text-slate-500 font-bold uppercase mb-1 block">Account Number</label><input type="text" value={acc.accountNumber} onChange={e => { const nb = [...banks]; nb[i] = {...nb[i], accountNumber: e.target.value}; setFormData({ ...formData, bankAccounts: nb }); }} className="w-full text-sm border border-slate-200 rounded px-2 py-1.5 outline-none" /></div>
-                                                                        <div><label className="text-[10px] text-slate-500 font-bold uppercase mb-1 block">IFSC Code</label><input type="text" value={acc.ifscCode} onChange={e => { const nb = [...banks]; nb[i] = {...nb[i], ifscCode: e.target.value}; setFormData({ ...formData, bankAccounts: nb }); }} className="w-full text-sm border border-slate-200 rounded px-2 py-1.5 outline-none" /></div>
-                                                                        <div className="col-span-2"><label className="text-[10px] text-slate-500 font-bold uppercase mb-1 block">Branch</label><input type="text" value={acc.branch} onChange={e => { const nb = [...banks]; nb[i] = {...nb[i], branch: e.target.value}; setFormData({ ...formData, bankAccounts: nb }); }} className="w-full text-sm border border-slate-200 rounded px-2 py-1.5 outline-none" /></div>
+
+                                                                        <div><label className="text-[10px] text-slate-500 font-bold uppercase mb-1 block">Bank Name</label><input type="text" value={acc.bankName} onChange={e => { const nb = [...banks]; nb[i] = { ...nb[i], bankName: e.target.value }; setFormData({ ...formData, bankAccounts: nb }); }} className="w-full text-sm border border-slate-200 rounded px-2 py-1.5 outline-none" /></div>
+                                                                        <div><label className="text-[10px] text-slate-500 font-bold uppercase mb-1 block">Account Name</label><input type="text" value={acc.accountName} onChange={e => { const nb = [...banks]; nb[i] = { ...nb[i], accountName: e.target.value }; setFormData({ ...formData, bankAccounts: nb }); }} className="w-full text-sm border border-slate-200 rounded px-2 py-1.5 outline-none" /></div>
+                                                                        <div><label className="text-[10px] text-slate-500 font-bold uppercase mb-1 block">Account Number</label><input type="text" value={acc.accountNumber} onChange={e => { const nb = [...banks]; nb[i] = { ...nb[i], accountNumber: e.target.value }; setFormData({ ...formData, bankAccounts: nb }); }} className="w-full text-sm border border-slate-200 rounded px-2 py-1.5 outline-none" /></div>
+                                                                        <div><label className="text-[10px] text-slate-500 font-bold uppercase mb-1 block">IFSC Code</label><input type="text" value={acc.ifscCode} onChange={e => { const nb = [...banks]; nb[i] = { ...nb[i], ifscCode: e.target.value }; setFormData({ ...formData, bankAccounts: nb }); }} className="w-full text-sm border border-slate-200 rounded px-2 py-1.5 outline-none" /></div>
+                                                                        <div className="col-span-2"><label className="text-[10px] text-slate-500 font-bold uppercase mb-1 block">Branch</label><input type="text" value={acc.branch} onChange={e => { const nb = [...banks]; nb[i] = { ...nb[i], branch: e.target.value }; setFormData({ ...formData, bankAccounts: nb }); }} className="w-full text-sm border border-slate-200 rounded px-2 py-1.5 outline-none" /></div>
                                                                     </div>
                                                                 ))}
                                                                 <button onClick={() => {
