@@ -22,6 +22,7 @@ export default function Settings() {
         companyAddress2: "",
         gstin: "",
         udyam: "",
+        websiteUrl: "",
         contact1Name: "",
         contact1Phone: "",
         contact2Name: "",
@@ -198,6 +199,10 @@ export default function Settings() {
                             <div>
                                 <label className="block text-sm font-semibold text-slate-700 mb-1.5">Company Name</label>
                                 <input type="text" placeholder="e.g. VR SOLARTECH" value={formData.companyName} onChange={e => setFormData(p => ({ ...p, companyName: e.target.value }))} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-blue-500 focus:bg-white transition-all" />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-semibold text-slate-700 mb-1.5">Website URL <span className="text-xs font-normal text-slate-400">(shown in PDF footer)</span></label>
+                                <input type="url" placeholder="e.g. https://www.vrsolartech.in/" value={formData.websiteUrl} onChange={e => setFormData(p => ({ ...p, websiteUrl: e.target.value }))} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-blue-500 focus:bg-white transition-all font-mono" />
                             </div>
                             <div className="grid grid-cols-2 gap-5">
                                 <div>

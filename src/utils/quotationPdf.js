@@ -31,7 +31,7 @@ function toNumber(value) {
     return match ? parseFloat(match[0]) : 0;
 }
 
-function numberToWords(n) {
+export function numberToWords(n) {
     if (!n || isNaN(n)) return "";
     const num = Math.round(n);
     const ones = ["","One","Two","Three","Four","Five","Six","Seven","Eight","Nine","Ten","Eleven","Twelve","Thirteen","Fourteen","Fifteen","Sixteen","Seventeen","Eighteen","Nineteen"];
@@ -73,6 +73,7 @@ async function loadLogoDataUrl(settings) {
     return await loadImageDataUrl("/logo.png");
 }
 
+const IMAGE_CACHE_MAX = 50;
 const imageCache = {};
 
 async function loadImageDataUrl(url) {
@@ -86,6 +87,11 @@ async function loadImageDataUrl(url) {
         return new Promise((resolve, reject) => {
             const reader = new FileReader();
             reader.onload = () => {
+                // Evict oldest entry if cache is full
+                const keys = Object.keys(imageCache);
+                if (keys.length >= IMAGE_CACHE_MAX) {
+                    delete imageCache[keys[0]];
+                }
                 imageCache[url] = reader.result;
                 resolve(reader.result);
             };
@@ -150,7 +156,9 @@ function drawFooter(doc, pageNumber, logoDataUrl, settings, pageCount = PAGE_COU
     doc.setFont("helvetica", "bold");
     doc.setFontSize(9);
     doc.setTextColor(37, 99, 235);
-    doc.text("https://www.vrsolartech.in/", MARGIN_X, PAGE_HEIGHT - 32);
+    // Use websiteUrl from settings if available, fall back to company default
+    const websiteUrl = settings.websiteUrl || "https://www.vrsolartech.in/";
+    doc.text(websiteUrl, MARGIN_X, PAGE_HEIGHT - 32);
 
     doc.setFont("helvetica", "normal");
     doc.setTextColor(71, 85, 105);
@@ -370,8 +378,9 @@ function buildPageThree(doc, type, logoDataUrl, diagramImageDataUrl, singleLineI
     y = bulletList(doc, type.benefits || [], y);
     y = sectionTitle(doc, "Single Line Diagram", y + 8);
     y = drawImageBox(doc, "SOLAR POWER SYSTEM FLOW", y + 8, singleLineImageDataUrl);
-    paragraph(doc, "A Solar Power system consists of following main elements:", y, { bold: true, after: 8 });
-    paragraph(doc, "Solar Panels | Mounting Structure | Inverter / Controller | Solar Cables & Connectors | Protection System | Distribution Box", y + 24, { lineHeight: 14 });
+    // Track y properly to avoid printing below the page boundary
+    y = paragraph(doc, "A Solar Power system consists of following main elements:", y, { bold: true, after: 8 });
+    paragraph(doc, "Solar Panels | Mounting Structure | Inverter / Controller | Solar Cables & Connectors | Protection System | Distribution Box", y, { lineHeight: 14 });
 }
 
 function buildPageFour(doc, type, logoDataUrl, settings, pageNumber = 4, pageCount = PAGE_COUNT) {
@@ -399,7 +408,7 @@ function buildPageFour(doc, type, logoDataUrl, settings, pageNumber = 4, pageCou
         startY: y + 32,
         margin: { left: MARGIN_X, right: MARGIN_X },
         head: [["Description", "Rate", "Total", "Discount", "Final"]],
-        body: type.financialRows,
+        body: Array.isArray(type.financialRows) ? type.financialRows : [],
         styles: { fontSize: 8.5, cellPadding: 6, textColor: [51, 65, 85], lineColor: [226, 232, 240], lineWidth: 0.5 },
         headStyles: { fillColor: [37, 99, 235], textColor: [255, 255, 255] },
         columnStyles: { 3: { fontStyle: "bold" }, 4: { fontStyle: "bold" } },
@@ -523,7 +532,8 @@ function buildPageSix(doc, logoDataUrl, settings, type, warranteeImageDataUrl, p
 
     if (warranteeImageDataUrl) {
         if (y + 190 > PAGE_HEIGHT - MARGIN_X) {
-            y = addPage(doc, pageNumber, logoDataUrl, settings, pageCount);
+            // Use pageNumber + 1 for the overflow page so header/footer are correct
+            y = addPage(doc, pageNumber + 1, logoDataUrl, settings, pageCount);
         } else {
             y += 10;
         }

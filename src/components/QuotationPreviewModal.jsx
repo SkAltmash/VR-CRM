@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
-import { X, Download, MessageCircle, Loader2, FileText, Plus, Minus, Eye, Edit, Zap, UploadCloud, CheckCircle2 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { X, Download, MessageCircle, Loader2, FileText, Plus, Minus, Eye, Edit, Zap, UploadCloud, CheckCircle2, RotateCcw } from "lucide-react";
 import { collection, doc as firestoreDoc, getDoc, getDocs, query, orderBy } from "firebase/firestore";
 import { db } from "../../firebase";
-import { createQuotationFile, createQuotationPreviewUrl, downloadQuotationPdf } from "../utils/quotationPdf";
+import { createQuotationFile, createQuotationPreviewUrl, downloadQuotationPdf, numberToWords } from "../utils/quotationPdf";
 import toast from "react-hot-toast";
 
 const CLOUD_NAME = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
@@ -36,6 +36,11 @@ export default function QuotationPreviewModal({ isOpen, lead, onClose, onActivit
     const [activeTab, setActiveTab] = useState("form");
     const [formTab, setFormTab] = useState("details");
     const [uploadingImage, setUploadingImage] = useState(false);
+    // Track which templateId formData was last initialized for
+    // to avoid wiping user edits when the templates array reference updates
+    const initializedForId = useRef(null);
+    // Ref to hold the debounce timer for preview generation
+    const previewDebounceTimer = useRef(null);
 
     const FORM_TABS = [
         { id: "details", label: " 1 · Cover" },
@@ -160,11 +165,21 @@ export default function QuotationPreviewModal({ isOpen, lead, onClose, onActivit
             setSelectedTypeId(null);
             setActiveTab("form");
             setFormTab("details");
+            initializedForId.current = null;
         }
     }, [isOpen]);
 
     useEffect(() => {
-        if (isOpen && lead && selectedType && Object.keys(selectedType).length > 0) {
+        // Only initialize formData when the selected template ID actually changes
+        // (not just when templates array reference updates after a re-fetch)
+        if (
+            isOpen &&
+            lead &&
+            selectedType &&
+            Object.keys(selectedType).length > 0 &&
+            initializedForId.current !== selectedType.id
+        ) {
+            initializedForId.current = selectedType.id;
             const initialData = JSON.parse(JSON.stringify(selectedType));
             // Do not pull Material & Financial from DB. Start fresh every time.
             initialData.materialRows = [["", "", ""]];
@@ -174,35 +189,45 @@ export default function QuotationPreviewModal({ isOpen, lead, onClose, onActivit
             initialData.monthlyBill = "";
             initialData.govtSubsidy = "";
             setFormData(initialData);
+            // Reset sub-tab when template changes so user lands on Cover tab
+            setFormTab("details");
         }
     }, [isOpen, lead, selectedType]);
 
-    // Whenever formData or activeTab changes to preview, regenerate preview
+    // Whenever formData or activeTab changes to preview, regenerate preview (debounced)
     useEffect(() => {
         if (!isOpen || !lead || activeTab !== "preview" || !formData.id) return;
+
+        // Clear any pending debounce
+        if (previewDebounceTimer.current) clearTimeout(previewDebounceTimer.current);
 
         let cancelled = false;
         setPreviewLoading(true);
         setPreviewError("");
-        setPreviewUrl("");
 
-        createQuotationPreviewUrl(lead, formData)
-            .then((url) => {
-                if (cancelled) {
-                    URL.revokeObjectURL(url);
-                    return;
-                }
-                setPreviewUrl(url);
-            })
-            .catch((err) => {
-                console.error("Failed to create quotation preview:", err);
-                if (!cancelled) setPreviewError("Preview unavailable");
-            })
-            .finally(() => {
-                if (!cancelled) setPreviewLoading(false);
-            });
+        previewDebounceTimer.current = setTimeout(() => {
+            setPreviewUrl("");
+            createQuotationPreviewUrl(lead, formData)
+                .then((url) => {
+                    if (cancelled) {
+                        URL.revokeObjectURL(url);
+                        return;
+                    }
+                    setPreviewUrl(url);
+                })
+                .catch((err) => {
+                    console.error("Failed to create quotation preview:", err);
+                    if (!cancelled) setPreviewError("Preview unavailable");
+                })
+                .finally(() => {
+                    if (!cancelled) setPreviewLoading(false);
+                });
+        }, 400); // 400ms debounce — avoids thrashing on rapid state changes
 
-        return () => { cancelled = true; };
+        return () => {
+            cancelled = true;
+            if (previewDebounceTimer.current) clearTimeout(previewDebounceTimer.current);
+        };
     }, [isOpen, lead, formData, activeTab]);
 
     useEffect(() => {
@@ -396,6 +421,22 @@ export default function QuotationPreviewModal({ isOpen, lead, onClose, onActivit
                                 <Eye size={12} /> Preview
                             </button>
                         </div>
+                        {activeTab === "form" && Object.keys(formData).length > 0 && (
+                            <button
+                                type="button"
+                                title="Reset this template's edits back to saved defaults"
+                                onClick={() => {
+                                    if (!window.confirm("Reset all edits for this template back to defaults? Your changes will be lost.")) return;
+                                    initializedForId.current = null; // force re-init
+                                    setFormTab("details");
+                                    // trigger the init effect
+                                    setFormData({});
+                                }}
+                                className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 text-slate-400 hover:text-orange-600 hover:border-orange-200 hover:bg-orange-50 bg-white transition-all"
+                            >
+                                <RotateCcw size={12} /> Reset
+                            </button>
+                        )}
                         <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 border-none bg-transparent cursor-pointer transition-all">
                             <X size={18} />
                         </button>
@@ -745,22 +786,8 @@ export default function QuotationPreviewModal({ isOpen, lead, onClose, onActivit
 
                                                 {/* Financial Rows (merged into Page 4) */}
                                                 {(() => {
+                                                    // Uses the shared numberToWords imported from quotationPdf.js
                                                     function toNum(v) { return parseFloat(String(v || "").replace(/,/g, "")) || 0; }
-                                                    function numberToWords(n) {
-                                                        if (!n || isNaN(n)) return "";
-                                                        const num = Math.round(n);
-                                                        const ones = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen"];
-                                                        const tens = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"];
-                                                        function words(n) {
-                                                            if (n < 20) return ones[n];
-                                                            if (n < 100) return tens[Math.floor(n / 10)] + (n % 10 ? " " + ones[n % 10] : "");
-                                                            if (n < 1000) return ones[Math.floor(n / 100)] + " Hundred" + (n % 100 ? " " + words(n % 100) : "");
-                                                            if (n < 100000) return words(Math.floor(n / 1000)) + " Thousand" + (n % 1000 ? " " + words(n % 1000) : "");
-                                                            if (n < 10000000) return words(Math.floor(n / 100000)) + " Lakh" + (n % 100000 ? " " + words(n % 100000) : "");
-                                                            return words(Math.floor(n / 10000000)) + " Crore" + (n % 10000000 ? " " + words(n % 10000000) : "");
-                                                        }
-                                                        return words(num) + " Rupees Only";
-                                                    }
                                                     const rows = formData.financialRows || [];
                                                     const computedRows = rows.map(row => { const rate = toNum(row[1]); const disc = toNum(row[3]); return { rate, disc, total: rate, final_: rate - disc }; });
                                                     const grandTotal = computedRows.reduce((s, r) => s + r.final_, 0);

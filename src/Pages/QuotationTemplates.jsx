@@ -239,25 +239,7 @@ export default function QuotationTemplates() {
             </div>
 
             {/* ── Stats Bar ── */}
-            {!loading && templates.length > 0 && (
-                <div className="grid grid-cols-3 gap-4 mb-6">
-                    {[
-                        { label: "Total Templates", value: templates.length, icon: FileText, color: "text-blue-500", bg: "bg-blue-50" },
-                        { label: "Material Rows", value: totalMaterials, icon: Copy, color: "text-purple-500", bg: "bg-purple-50" },
-                        { label: "Financial Rows", value: totalFinancials, icon: Zap, color: "text-emerald-500", bg: "bg-emerald-50" },
-                    ].map(stat => (
-                        <div key={stat.label} className="bg-white border border-slate-200 rounded-xl px-4 py-3 flex items-center gap-3 shadow-sm">
-                            <div className={`w-9 h-9 rounded-lg ${stat.bg} flex items-center justify-center shrink-0`}>
-                                <stat.icon size={16} className={stat.color} />
-                            </div>
-                            <div>
-                                <p className="text-xl font-bold text-slate-800">{stat.value}</p>
-                                <p className="text-xs text-slate-400">{stat.label}</p>
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            )}
+         
 
             {/* ── Toolbar ── */}
             <div className="flex items-center gap-3 mb-5 flex-wrap">

@@ -8,7 +8,7 @@ const emptyLead = {
 };
 
 const statusOptions = ["New", "Follow-up", "Negotiation", "Converted", "Lost"];
-const sourceOptions = ["Website", "Referral", "Social Media", "Cold Call", "WhatsApp", "Other"];
+const sourceOptions = ["Website", "Referral", "Social Media", "Cold Call", "WhatsApp", "Just Dial", "Other"];
 export default function LeadModal({ isOpen, onClose, onSave, lead, mode }) {
     const [form, setForm] = useState(emptyLead);
     const [saving, setSaving] = useState(false);
